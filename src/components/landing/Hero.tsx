@@ -17,8 +17,8 @@ export function Hero({
   return (
     <section id="top" className="relative h-dvh min-h-[760px] overflow-hidden bg-black">
       <img
-        src="/space/hero.png"
-        alt=""
+        src="https://images.unsplash.com/photo-1614730321146-b6fa6a46bcb4?q=100&w=3840&auto=format&fit=crop"
+        alt="4K Earth"
         className="absolute inset-0 h-full w-full object-cover object-[center_30%]"
       />
       <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/15 to-black/80" />
@@ -26,15 +26,12 @@ export function Hero({
 
       <div className="relative z-10 flex h-full flex-col">
         <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-          <p className="font-display text-[13px] font-normal tracking-[0.48em] text-white/80">
-            The next era of
+          <p className="font-sans text-[13px] font-normal tracking-[0.48em] text-[#9e9e9e]">
+            THE NEXT ERA OF
           </p>
-          <h1 className="font-display mt-3 text-[clamp(3rem,10vw,8rem)] font-bold leading-[0.84] tracking-[0.12em] text-white">
-            Earth query
+          <h1 className="font-sans mt-3 text-[clamp(3rem,10vw,8rem)] font-bold leading-[0.84] tracking-[0.12em] text-[#fafafa]">
+            EARTH QUERY
           </h1>
-          <p className="mt-6 max-w-lg text-[13px] tracking-[0.08em] text-white/60 uppercase">
-            Chat with a satellite scene · SIH26167
-          </p>
         </div>
 
         <div id="book" className="mx-auto mb-8 w-[min(860px,calc(100%-2rem))] scroll-mt-24">
@@ -46,15 +43,15 @@ export function Hero({
                 onClick={() => onSelect(d.id)}
                 className={`rounded-full px-3 py-1.5 text-[11px] tracking-[0.16em] uppercase ${
                   d.id === active.id
-                    ? "bg-[#00b4ff] text-black"
-                    : "border border-white/20 text-white/70 hover:text-white"
+                    ? "bg-white text-black"
+                    : "border border-white/20 text-[#fafafa]/70 hover:text-[#fafafa]"
                 }`}
               >
                 {d.name}
               </button>
             ))}
           </div>
-          <p className="mb-2 text-center text-[11px] tracking-[0.18em] text-white/40 uppercase">
+          <p className="mb-2 text-center text-[11px] tracking-[0.18em] text-[#9e9e9e] uppercase">
             {active.flight} · {active.task} · {active.place}
           </p>
           <form
@@ -75,11 +72,11 @@ export function Hero({
               }}
               rows={2}
               placeholder={`Ask about ${active.name}… e.g. “Identify flooded areas and show affected settlements.”`}
-              className="max-h-28 flex-1 resize-none bg-transparent text-[15px] leading-relaxed text-white outline-none placeholder:text-white/35"
+              className="max-h-28 flex-1 resize-none bg-transparent text-[15px] leading-relaxed text-[#fafafa] outline-none placeholder:text-[#9e9e9e]"
             />
             <button
               type="submit"
-              className="cyan-glow mb-0.5 rounded-full bg-[#00b4ff] px-5 py-2.5 text-[12px] font-semibold tracking-[0.2em] text-black uppercase hover:bg-[#5ad2ff]"
+              className=" mb-0.5 rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold tracking-[0.2em] text-black uppercase hover:bg-gray-200"
             >
               Ask
             </button>
@@ -89,3 +86,7 @@ export function Hero({
     </section>
   );
 }
+
+
+
+

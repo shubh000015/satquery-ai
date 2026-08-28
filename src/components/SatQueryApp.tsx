@@ -38,7 +38,7 @@ function Shell() {
       }
       if (e.key === "/" && tag !== "TEXTAREA" && tag !== "INPUT") {
         e.preventDefault();
-        document.getElementById("satquery-input")?.focus();
+        document.getElementById("SatQuery-input")?.focus();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -72,3 +72,5 @@ function Shell() {
     </AnimatePresence>
   );
 }
+
+

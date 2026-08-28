@@ -45,7 +45,7 @@ export function QueryDock() {
                   : "Describe the scene, count objects, or highlight something…"
             }
             className="w-full resize-none bg-transparent text-[14px] leading-relaxed text-ink outline-none placeholder:text-faint"
-            id="satquery-input"
+            id="SatQuery-input"
           />
         </label>
         <button
@@ -72,3 +72,5 @@ export function QueryDock() {
     </div>
   );
 }
+
+

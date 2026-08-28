@@ -12,13 +12,13 @@ export function Missions({
   return (
     <section id="journeys" className="relative bg-black px-6 py-24 md:px-10 md:py-32">
       <div className="mx-auto max-w-[1200px] text-center">
-        <p className="font-display text-[12px] font-normal tracking-[0.42em] text-white/50">
+        <p className="font-sans text-[12px] font-normal tracking-[0.42em] text-[#9e9e9e]">
           Demo scenes
         </p>
-        <h2 className="font-display mt-3 text-[clamp(2.2rem,5vw,4.2rem)] font-semibold tracking-[0.14em]">
+        <h2 className="font-sans mt-3 text-[clamp(2.2rem,5vw,4.2rem)] font-semibold tracking-[0.14em]">
           Every required task
         </h2>
-        <p className="mx-auto mt-4 max-w-xl text-[14px] text-white/50">
+        <p className="mx-auto mt-4 max-w-xl text-[14px] text-[#9e9e9e]">
           Four Indian scenes. Open a chat, ask in English, get grounded evidence.
         </p>
       </div>
@@ -38,9 +38,9 @@ export function Missions({
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/25 to-transparent" />
             <div className="absolute inset-x-0 bottom-0 p-4">
-              <p className="text-[10px] tracking-[0.22em] text-[#00b4ff] uppercase">{d.task}</p>
-              <p className="font-display mt-1 text-[14px] tracking-[0.16em] text-white">{d.label}</p>
-              <p className="mt-1 text-[11px] text-white/50">{d.proves}</p>
+              <p className="text-[10px] tracking-[0.22em] text-[#bcbcbc] uppercase">{d.task}</p>
+              <p className="font-sans mt-1 text-[14px] tracking-[0.16em] text-[#fafafa]">{d.label}</p>
+              <p className="mt-1 text-[11px] text-[#9e9e9e]">{d.proves}</p>
             </div>
           </button>
         ))}
@@ -48,3 +48,7 @@ export function Missions({
     </section>
   );
 }
+
+
+
+

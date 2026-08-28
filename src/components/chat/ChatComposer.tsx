@@ -25,7 +25,7 @@ export function ChatComposer() {
         className="flex items-end gap-2 rounded-2xl border border-white/15 bg-white/5 px-3 py-2"
       >
         <textarea
-          id="satquery-input"
+          id="SatQuery-input"
           value={s.query}
           onChange={(e) => s.setQuery(e.target.value)}
           onKeyDown={(e) => {
@@ -50,3 +50,5 @@ export function ChatComposer() {
     </div>
   );
 }
+
+

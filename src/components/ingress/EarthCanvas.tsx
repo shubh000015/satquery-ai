@@ -401,3 +401,4 @@ function makeSatellite() {
   g.scale.setScalar(1.2);
   return g;
 }
+

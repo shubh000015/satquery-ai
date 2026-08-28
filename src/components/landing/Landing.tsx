@@ -21,7 +21,7 @@ export function Landing() {
 
   return (
     <div
-      className="relative min-h-dvh bg-black text-white"
+      className="relative min-h-dvh bg-black text-[#fafafa]"
       onDragOver={(e) => {
         e.preventDefault();
         setDrag(true);
@@ -60,16 +60,16 @@ export function Landing() {
       {pairChoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
           <div className="w-[min(440px,92vw)] border border-white/15 bg-[#000b1a] p-8">
-            <p className="text-[11px] tracking-[0.28em] text-[#00b4ff] uppercase">Pair detected</p>
-            <p className="font-display mt-3 text-3xl tracking-[0.08em]">Two files</p>
-            <p className="mt-2 text-[14px] text-white/55">
+            <p className="text-[11px] tracking-[0.28em] text-[#bcbcbc] uppercase">Pair detected</p>
+            <p className="font-sans mt-3 text-3xl tracking-[0.08em]">Two files</p>
+            <p className="mt-2 text-[14px] text-[#9e9e9e]">
               Same place across sensors — or the same place across time.
             </p>
             <div className="mt-7 grid grid-cols-2 gap-3">
               <button
                 type="button"
                 onClick={() => confirmPair("cross-modal")}
-                className="bg-[#00b4ff] py-3 text-[12px] tracking-[0.2em] text-black uppercase"
+                className="bg-white py-3 text-[12px] tracking-[0.2em] text-black uppercase"
               >
                 Optical × SAR
               </button>
@@ -84,7 +84,7 @@ export function Landing() {
             <button
               type="button"
               onClick={cancelPair}
-              className="mt-4 text-[11px] tracking-[0.2em] text-white/40 uppercase"
+              className="mt-4 text-[11px] tracking-[0.2em] text-[#9e9e9e] uppercase"
             >
               Cancel
             </button>
@@ -94,3 +94,8 @@ export function Landing() {
     </div>
   );
 }
+
+
+
+
+

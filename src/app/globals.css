@@ -18,6 +18,21 @@
   --ok: #7dce9a;
   --stroke: rgba(0, 180, 255, 0.4);
   --stroke-2: rgba(255, 255, 255, 0.14);
+
+  /* SAT Workspace variables (from design.md) */
+  --sat-bg: #0c0c0c;
+  --sat-box: #111111;
+  --sat-hairline: rgba(255, 255, 255, 0.065);
+  --sat-heading: #fafafa;
+  --sat-subtitle: #9e9e9e;
+  --sat-nav: #bcbcbc;
+  --sat-placeholder: #aeaeae;
+  --sat-panel-bg: #0d0d0d;
+  --sat-bubble-bg: #1c1c1c;
+  --sat-msg-text: #efefef;
+  --sat-reason-text: #0b0c07;
+  --sat-green: #23d92c;
+  --sat-input-bg: #fdfdfd;
 }
 
 @theme inline {
@@ -36,6 +51,21 @@
   --color-ink-2: var(--ink-2);
   --color-mute: var(--mute);
   --color-faint: var(--faint);
+  
+  --color-sat-bg: var(--sat-bg);
+  --color-sat-box: var(--sat-box);
+  --color-sat-hairline: var(--sat-hairline);
+  --color-sat-heading: var(--sat-heading);
+  --color-sat-subtitle: var(--sat-subtitle);
+  --color-sat-nav: var(--sat-nav);
+  --color-sat-placeholder: var(--sat-placeholder);
+  --color-sat-panel-bg: var(--sat-panel-bg);
+  --color-sat-bubble-bg: var(--sat-bubble-bg);
+  --color-sat-msg-text: var(--sat-msg-text);
+  --color-sat-reason-text: var(--sat-reason-text);
+  --color-sat-green: var(--sat-green);
+  --color-sat-input-bg: var(--sat-input-bg);
+
   --font-sans: var(--font-inter);
   --font-display: var(--font-oswald);
   --font-mono: var(--font-plex);
