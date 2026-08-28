@@ -17,8 +17,8 @@ export function Hero({
   return (
     <section id="top" className="relative h-dvh min-h-[760px] overflow-hidden bg-black">
       <img
-        src="https://images.unsplash.com/photo-1614730321146-b6fa6a46bcb4?q=100&w=3840&auto=format&fit=crop"
-        alt="4K Earth"
+        src="/space/hero.png"
+        alt=""
         className="absolute inset-0 h-full w-full object-cover object-[center_30%]"
       />
       <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/15 to-black/80" />
@@ -26,9 +26,6 @@ export function Hero({
 
       <div className="relative z-10 flex h-full flex-col">
         <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-          <p className="font-sans text-[13px] font-normal tracking-[0.48em] text-[#9e9e9e]">
-            THE NEXT ERA OF
-          </p>
           <h1 className="font-sans mt-3 text-[clamp(3rem,10vw,8rem)] font-bold leading-[0.84] tracking-[0.12em] text-[#fafafa]">
             EARTH QUERY
           </h1>

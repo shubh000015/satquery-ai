@@ -9,13 +9,6 @@ export function SatelliteQAPanel({ isMobile }: { isMobile?: boolean }) {
         <header className="flex h-14 shrink-0 items-center gap-2 border-b border-sat-hairline px-5">
           <Target size={16} className="text-sat-heading" />
           <h2 className="text-sm font-medium text-sat-heading">Analysis & Queries</h2>
-          <div className="ml-auto flex items-center gap-1.5">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sat-green opacity-75"></span>
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-sat-green"></span>
-            </span>
-            <span className="text-[11px] text-sat-subtitle uppercase tracking-wide">Model Active</span>
-          </div>
         </header>
       )}
 
