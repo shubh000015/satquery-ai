@@ -1,34 +1,29 @@
 "use client";
 
+import { useSatQuery } from "@/lib/store";
+
 export function SiteNav() {
+  const { setScreen } = useSatQuery();
   const link =
-    "text-[11px] tracking-[0.28em] text-[#9e9e9e] uppercase hover:text-[#bcbcbc] transition-colors";
+    "text-[12px] font-sans tracking-[0.28em] text-[#9e9e9e] uppercase hover:text-[#00D964] transition-colors cursor-pointer";
+
   return (
     <header className="pointer-events-none fixed inset-x-0 top-0 z-40">
-      <div className="pointer-events-auto mx-auto grid h-20 max-w-[1280px] grid-cols-[1fr_auto_1fr] items-center px-6 md:px-10">
-        <nav className="hidden items-center gap-10 md:flex">
-          <a href="#journeys" className={link}>
-            Scenes
+      <div className="pointer-events-auto mx-auto flex h-20 max-w-[1280px] items-center justify-center px-6 md:px-10">
+        <nav className="flex items-center gap-10 sm:gap-14">
+          <a href="#features" className={link}>
+            Features
           </a>
-          <a href="#book" className={link}>
+          <a href="#models" className={link}>
+            Models
+          </a>
+          <button
+            type="button"
+            onClick={() => setScreen("workspace")}
+            className={link}
+          >
             Chat
-          </a>
-        </nav>
-        <a href="#top" className="text-center">
-          <span className="font-sans block text-[22px] font-bold tracking-[0.42em] text-[#fafafa]">
-            SATQUERY
-          </span>
-          <span className="mt-0.5 hidden text-[9px] tracking-[0.28em] text-[#bcbcbc] uppercase sm:block">
-            SIH · ISRO
-          </span>
-        </a>
-        <nav className="hidden items-center justify-end gap-10 md:flex">
-          <a href="#laboratory" className={link}>
-            Instruments
-          </a>
-          <a href="#join" className={link}>
-            Upload
-          </a>
+          </button>
         </nav>
       </div>
     </header>

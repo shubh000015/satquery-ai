@@ -66,21 +66,6 @@ export function ImageryStage() {
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center justify-between px-3 py-1.5 text-[11px] text-mute">
-        <span>
-          {primary.sensor} · {primary.date} · {primary.gsd}
-        </span>
-        <CompareSwitch
-          mode={s.mission?.mode ?? "single"}
-          compare={s.compare}
-          setCompare={s.setCompare}
-          hasSecondary={Boolean(secondary)}
-        />
-        <span>
-          {primary.coords} · ×{s.scale.toFixed(2)}
-        </span>
-      </div>
-
       <div
         ref={stageRef}
         className={`relative min-h-0 flex-1 overflow-hidden bg-black ${s.measuring ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"}`}
@@ -115,6 +100,7 @@ export function ImageryStage() {
             swipe={s.swipe}
             running={s.running}
             acquiring={s.acquiring}
+            hasResult={!!s.result && !s.running}
           />
           <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
             {s.result?.masks.map((m) => {
@@ -219,6 +205,7 @@ function Frame({
   swipe,
   running,
   acquiring,
+  hasResult,
 }: {
   primary: Asset;
   secondary?: Asset;
@@ -226,12 +213,13 @@ function Frame({
   swipe: number;
   running: boolean;
   acquiring: boolean;
+  hasResult?: boolean;
 }) {
   if (compare === "split" && secondary) {
     return (
       <div className="grid h-full grid-cols-2 gap-px bg-brass/30">
-        <Plate asset={primary} label="A" running={running} />
-        <Plate asset={secondary} label="B" running={running} />
+        <Plate asset={primary} label="A" running={running} hasResult={hasResult} />
+        <Plate asset={secondary} label="B" running={running} hasResult={hasResult} />
       </div>
     );
   }
@@ -239,10 +227,10 @@ function Frame({
   if (compare === "swipe" && secondary) {
     return (
       <div className="relative h-full w-full">
-        <Plate asset={secondary} label="B" running={running} />
+        <Plate asset={secondary} label="B" running={running} hasResult={hasResult} />
         <div className="absolute inset-0 overflow-hidden" style={{ width: `${swipe}%` }}>
           <div className="h-full" style={{ width: `${10000 / swipe}%` }}>
-            <Plate asset={primary} label="A" running={running} />
+            <Plate asset={primary} label="A" running={running} hasResult={hasResult} />
           </div>
         </div>
         <div className="absolute top-0 bottom-0 w-0.5 bg-brass" style={{ left: `${swipe}%` }}>
@@ -255,9 +243,9 @@ function Frame({
   if (compare === "diff" && secondary) {
     return (
       <div className="relative h-full w-full">
-        <Plate asset={primary} label="t₀" running={running} />
+        <Plate asset={primary} label="t₀" running={running} hasResult={hasResult} />
         <div className="absolute inset-0 mix-blend-difference opacity-80">
-          <Plate asset={secondary} label="t₁" running={running} />
+          <Plate asset={secondary} label="t₁" running={running} hasResult={hasResult} />
         </div>
       </div>
     );
@@ -266,13 +254,18 @@ function Frame({
   const shown = compare === "secondary" && secondary ? secondary : primary;
   return (
     <div className={`h-full w-full ${acquiring ? "opacity-40" : "opacity-100"} transition-opacity duration-700`}>
-      <Plate asset={shown} running={running} />
+      <Plate asset={shown} running={running} hasResult={hasResult} />
     </div>
   );
 }
 
-function Plate({ asset, label, running }: { asset: Asset; label?: string; running?: boolean }) {
+import { X as XIcon } from "lucide-react";
+
+function Plate({ asset, label, running, hasResult }: { asset: Asset; label?: string; running?: boolean; hasResult?: boolean }) {
   const sar = asset.modality === "sar";
+  const s = useSatQuery();
+  const isCustom = s.mission?.id === "upload";
+
   return (
     <div className="relative h-full w-full overflow-hidden bg-[#0a0c10]">
       <img
@@ -281,11 +274,25 @@ function Plate({ asset, label, running }: { asset: Asset; label?: string; runnin
         className={`h-full w-full object-cover ${sar ? "contrast-125 saturate-50" : ""} ${running ? "brightness-75" : ""}`}
         draggable={false}
       />
-      {sar && <div className="speckle absolute inset-0" />}
+      {sar && !hasResult && <div className="speckle absolute inset-0" />}
       {label && (
-        <span className="absolute top-2 left-2 rounded bg-void/70 px-1.5 py-0.5 font-mono text-[10px] text-brass">
-          {label} · {asset.modality} · {asset.date}
-        </span>
+        <div className="absolute top-2 left-2 flex items-center gap-2">
+          <span className="rounded bg-void/70 px-1.5 py-0.5 font-mono text-[10px] text-brass">
+            {label} · {asset.modality} · {asset.date}
+          </span>
+          {isCustom && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                s.removeAsset(asset.id);
+              }}
+              title="Remove image"
+              className="flex h-5 w-5 items-center justify-center rounded bg-void/70 text-brass transition-colors hover:bg-red-500/80 hover:text-white"
+            >
+              <XIcon size={12} />
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

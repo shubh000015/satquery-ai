@@ -1,23 +1,25 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { DESTINATIONS } from "./destinations";
 import { useSatQuery } from "@/lib/store";
 import { Hero } from "./Hero";
 import { Brief } from "./Brief";
-import { Join, SiteFooter } from "./Join";
+import { SiteFooter } from "./Join";
 import { Laboratory } from "./Laboratory";
-import { Missions } from "./Missions";
 import { SiteNav } from "./SiteNav";
 
 export function Landing() {
-  const { openMission, ingestFiles, pairChoice, confirmPair, cancelPair } = useSatQuery();
+  const { ingestFiles, pairChoice, confirmPair, cancelPair, setScreen } = useSatQuery();
   const inputRef = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
-  const [activeId, setActiveId] = useState<string>(DESTINATIONS[0].id);
-  const active = DESTINATIONS.find((d) => d.id === activeId) ?? DESTINATIONS[0];
 
   const upload = () => inputRef.current?.click();
+
+  const handleAsk = (query: string) => {
+    // If they ask a query without uploading an image, we can just switch to workspace, or alert them.
+    // Let's just switch to workspace so they are in the chat.
+    setScreen("workspace");
+  };
 
   return (
     <div
@@ -35,14 +37,11 @@ export function Landing() {
     >
       <SiteNav />
       <Hero
-        active={active}
-        onSelect={setActiveId}
-        onAsk={(id, q) => openMission(id, q ? { query: q } : {})}
+        onAsk={handleAsk}
+        onUpload={upload}
       />
-      <Brief />
-      <Missions active={active} onSelect={setActiveId} onLaunch={(id) => openMission(id)} />
       <Laboratory />
-      <Join drag={drag} onUpload={upload} />
+      <Brief />
       <SiteFooter />
 
       <input
