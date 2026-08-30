@@ -13,7 +13,7 @@ export function Report() {
       <article className="mx-auto my-8 w-[min(760px,94vw)] rounded-lg bg-[#f3eee6] px-10 py-9 text-[#1c1914] print:my-0 print:w-auto print:rounded-none">
         <header className="flex items-start justify-between border-b border-black/10 pb-3">
           <div>
-            <p className="text-[12px] tracking-[0.14em] text-black/50 uppercase">SatQuery · SIH26167 · ISRO</p>
+            <p className="text-[12px] tracking-[0.14em] text-black/50 uppercase">SatQuery · SIH · ISRO</p>
             <h1 className="mt-0.5 text-2xl font-medium">Grounded scene report</h1>
           </div>
           <p className="font-mono text-[11px] text-black/45">{s.mission.code}</p>
@@ -80,7 +80,7 @@ export function Report() {
         )}
 
         <p className="mt-8 text-[11px] text-black/40">
-          SIH26167 demo UI · not an official ISRO product
+          SIH demo UI · not an official ISRO product
         </p>
       </article>
       <div className="no-print sticky bottom-0 flex justify-center gap-3 bg-void/90 py-3">
@@ -102,3 +102,5 @@ export function Report() {
     </div>
   );
 }
+
+

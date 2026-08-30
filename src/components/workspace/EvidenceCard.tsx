@@ -130,6 +130,8 @@ function downloadJson(s: ReturnType<typeof useSatQuery>) {
   );
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `satquery-${s.mission.id}.json`;
+  a.download = `SatQuery-${s.mission.id}.json`;
   a.click();
 }
+
+

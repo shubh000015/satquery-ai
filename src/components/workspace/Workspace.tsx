@@ -1,101 +1,115 @@
 "use client";
 
-import { useRef } from "react";
-import { Download, FolderOpen, Ruler } from "lucide-react";
-import { ChatComposer } from "@/components/chat/ChatComposer";
-import { ChatThread } from "@/components/chat/ChatThread";
-import { EvidenceCard } from "@/components/workspace/EvidenceCard";
-import { ImageryStage } from "@/components/workspace/ImageryStage";
-import { Report } from "@/components/workspace/Report";
+import { useState, useEffect } from "react";
+import { MessageSquare, X } from "lucide-react";
+import { HistorySidebar } from "./HistorySidebar";
+import { SatelliteQAPanel } from "./SatelliteQAPanel";
 import { useSatQuery } from "@/lib/store";
 
 export function Workspace() {
   const s = useSatQuery();
-  const fileRef = useRef<HTMLInputElement>(null);
-  if (!s.mission) return null;
   const m = s.mission;
+  
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [qaOpen, setQaOpen] = useState(false);
+
+  // Close sidebars on resize to desktop
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 768) {
+        setHistoryOpen(false);
+        setQaOpen(false);
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-black">
-      <header className="flex items-center gap-3 border-b border-white/10 px-3 py-2.5">
-        <button
-          type="button"
-          onClick={s.goIngress}
-          className="font-display px-1 text-[13px] tracking-[0.22em]"
-        >
-          SATQUERY
-        </button>
-        <span className="hidden text-[10px] tracking-[0.16em] text-[#00b4ff] uppercase sm:inline">
-          SIH26167 · Chat
-        </span>
-        <span className="hidden h-4 w-px bg-white/10 sm:block" />
-        <div className="min-w-0">
-          <p className="truncate text-[13px]">{m.title}</p>
-          <p className="truncate font-mono text-[10px] text-white/40">
-            {m.location} ·{" "}
-            {m.mode === "cross-modal"
-              ? "optical + SAR"
-              : m.mode === "bi-temporal"
-                ? "bi-temporal"
-                : "single optical"}
-          </p>
-        </div>
-        <div className="ml-auto flex items-center gap-1">
-          <button
-            type="button"
-            title="Measure"
-            onClick={() => s.setMeasuring(!s.measuring)}
-            className={`rounded-md p-2 ${s.measuring ? "bg-[#00b4ff]/15 text-[#00b4ff]" : "text-white/45 hover:text-white"}`}
-          >
-            <Ruler size={15} />
-          </button>
-          <button
-            type="button"
-            title="Load files"
-            onClick={() => fileRef.current?.click()}
-            className="rounded-md p-2 text-white/45 hover:text-white"
-          >
-            <FolderOpen size={15} />
-          </button>
-          <button
-            type="button"
-            title="Export report"
-            onClick={() => s.setReportOpen(true)}
-            className="rounded-md p-2 text-white/45 hover:text-white"
-          >
-            <Download size={15} />
-          </button>
-        </div>
-      </header>
+    <div className="flex h-dvh w-full overflow-hidden bg-sat-bg text-sat-heading font-sans selection:bg-white/20 selection:text-white">
+      {/* Left Column: History */}
+      <HistorySidebar isOpen={historyOpen} onClose={() => setHistoryOpen(false)} />
 
-      <div className="flex min-h-0 flex-1">
-        <section className="flex w-full min-w-0 flex-col border-white/10 md:w-[42%] md:max-w-[480px] md:border-r">
-          <ChatThread />
-          <ChatComposer />
-        </section>
-        <section className="hidden min-w-0 flex-1 flex-col md:flex">
-          <ImageryStage />
-          {s.result && (
-            <div className="max-h-[38%] overflow-y-auto border-t border-white/10">
-              <EvidenceCard />
-            </div>
-          )}
-        </section>
+      {/* Middle Column: Satellite Imagery Viewer */}
+      <main className="flex min-w-0 flex-1 flex-col">
+        {/* Header with features/details */}
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-sat-hairline bg-sat-bg px-4">
+          <button onClick={() => setHistoryOpen(true)} className="text-sat-nav md:hidden">
+            <span className="sr-only">Open History</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          
+          <div className="hidden h-4 w-px bg-sat-hairline md:block" />
+          
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[13px] font-medium text-sat-heading">
+              {m ? m.title : "Earth Observation"}
+            </p>
+            <p className="truncate font-mono text-[10px] text-sat-subtitle">
+              {m ? `${m.location} · ${m.mode === "cross-modal" ? "optical + SAR" : m.mode === "bi-temporal" ? "bi-temporal" : "single optical"}` : "Global View · High Resolution"}
+            </p>
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              title="Measure"
+              onClick={() => s.setMeasuring(!s.measuring)}
+              className={`rounded-md p-1.5 transition-colors ${s.measuring ? "bg-sat-hairline text-sat-heading" : "text-sat-nav hover:bg-sat-hairline/50 hover:text-sat-heading"}`}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+            </button>
+            <button
+              type="button"
+              title="Export report"
+              onClick={() => s.setReportOpen(true)}
+              className="rounded-md p-1.5 text-sat-nav transition-colors hover:bg-sat-hairline/50 hover:text-sat-heading"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            </button>
+          </div>
+        </header>
+        
+        <div className="relative flex-1 overflow-hidden bg-black">
+          <img
+            src="https://images.unsplash.com/photo-1614730321146-b6fa6a46bcb4?q=100&w=3840&auto=format&fit=crop"
+            alt="4K Earth"
+            className="h-full w-full object-cover object-center"
+          />
+        </div>
+      </main>
+
+      {/* Right Column: Q&A Panel (Desktop) */}
+      <div className="hidden md:block">
+        <SatelliteQAPanel />
       </div>
 
-      <div className="max-h-[32vh] md:hidden">{s.result && <EvidenceCard />}</div>
+      {/* Mobile Q&A Toggle */}
+      <button 
+        onClick={() => setQaOpen(true)}
+        className="fixed bottom-6 right-6 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-sat-heading text-sat-bg shadow-xl md:hidden"
+      >
+        <MessageSquare size={24} className="fill-sat-bg" />
+      </button>
 
-      <Report />
-      <input
-        ref={fileRef}
-        type="file"
-        accept=".tif,.tiff,.png,.jpg,.jpeg,.webp,image/*"
-        multiple
-        className="hidden"
-        onChange={(e) => {
-          if (e.target.files?.length) s.ingestFiles(e.target.files);
-        }}
-      />
+      {/* Mobile Q&A Drawer */}
+      {qaOpen && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-sat-bg md:hidden">
+          <header className="flex h-14 shrink-0 items-center justify-between border-b border-sat-hairline px-4">
+            <h2 className="text-sm font-medium text-sat-heading">Analysis</h2>
+            <button onClick={() => setQaOpen(false)} className="text-sat-nav">
+              <X size={20} />
+            </button>
+          </header>
+          <div className="flex-1 overflow-hidden">
+            <SatelliteQAPanel isMobile />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+

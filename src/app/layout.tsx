@@ -20,9 +20,9 @@ const plex = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SATQUERY · SIH26167",
+  title: "SATQUERY · SIH",
   description:
-    "SatQuery AI — an interactive vision-language assistant for multimodal remote sensing image analysis through text queries. Optical, SAR, bi-temporal. Smart India Hackathon 2026, ISRO.",
+    "SATQUERY AI — an interactive vision-language assistant for multimodal remote sensing image analysis through text queries. Optical, SAR, bi-temporal. Smart India Hackathon 2026, ISRO.",
   icons: { icon: "/favicon.svg" },
 };
 
@@ -36,3 +36,5 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     </html>
   );
 }
+
+
