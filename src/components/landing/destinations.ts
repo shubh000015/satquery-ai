@@ -78,34 +78,34 @@ export type Destination = (typeof DESTINATIONS)[number];
 export const LABS = [
   {
     no: "01",
-    title: "Captioning",
-    body: "Mandatory. Describe land-cover and major objects in one remote-sensing frame.",
+    title: "Multi-Sensor Data Ingestion",
+    body: "It seamlessly processes both synthetic aperture radar (SAR) and multispectral optical imagery to analyze complex Earth Observation data.",
   },
   {
     no: "02",
-    title: "Visual Q&A",
-    body: "Ask in English. Flooded or not. How many ships. Is agriculture dominant.",
+    title: "Geographically Anchored Captioning",
+    body: "It automatically generates highly accurate text descriptions detailing specific land-use and land-cover classes present in satellite patches.",
   },
   {
     no: "03",
-    title: "Grounding",
-    body: "Text-guided localisation. Boxes and masks drawn back onto the pixels.",
+    title: "Visual Question Answering (VQA)",
+    body: "It answers direct user queries about uploaded satellite images through both binary and multiple-choice conversational formats.",
   },
   {
     no: "04",
-    title: "Change",
-    body: "Bi-temporal VQA. Increase, decrease, or unchanged — plus where it happened.",
+    title: "Spatial Grounding and Detection",
+    body: "It visually pinpoints user-requested geographical features directly on the image using precise bounding box predictions.",
   },
   {
     no: "05",
-    title: "Optical × SAR",
-    body: "All-weather fusion. Clouded optical is recovered by radar backscatter.",
+    title: "Factual Knowledge Retrieval (RAG)",
+    body: "It dynamically pulls external scientific metadata and geographical records to ensure all image analysis is grounded in real-world facts.",
   },
 ] as const;
 
 export const PS_COVER = [
-  { k: "Text queries", v: "Natural language in, grounded evidence out" },
-  { k: "Multimodal", v: "Optical, SAR, and two dates of the same place" },
-  { k: "Agentic", v: "The query selects the specialist. The user does not." },
-  { k: "India", v: "Flood, port, city, harvest — scenes a ministry would open" },
+  { k: "Vision-Language Model", v: "Handles complex VQA, reasoning, and captioning across multiple modalities." },
+  { k: "Earth Foundation Model", v: "Specialized encoder for satellite imagery and multi-temporal features." },
+  { k: "Spatial Detection Model", v: "Pinpoints features with precise bounding boxes and segmentation masks." },
+  { k: "RAG Engine", v: "Retrieves external geographical and scientific context to ground answers." },
 ] as const;

@@ -30,6 +30,28 @@ export function Join({
         >
           Upload scene
         </button>
+
+        <div className="mx-auto mt-12 max-w-lg border border-[#fafafa]/10 bg-black/50 p-5 text-left shadow-lg">
+          <p className="mb-3 text-[12px] font-semibold tracking-wide text-[#fafafa] uppercase">
+            Accepted formats for SIH problem statement:
+          </p>
+          <ul className="space-y-2 text-[13px] text-[#9e9e9e]">
+            <li className="flex items-center gap-2">
+              <span>✅</span> <span><strong>GeoTIFF</strong> (.tif / .tiff) — supported</span>
+            </li>
+            <li className="flex items-center gap-2">
+              <span>✅</span> <span><strong>TIFF</strong> (.tif / .tiff) — supported</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5">⚠️</span> 
+              <span><strong>PNG</strong> (.png) — only for the prescribed public benchmark datasets</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5">⚠️</span> 
+              <span><strong>JPEG/JPG</strong> (.jpg / .jpeg) — only for the prescribed public benchmark datasets</span>
+            </li>
+          </ul>
+        </div>
       </div>
     </section>
   );
@@ -41,7 +63,7 @@ export function SiteFooter() {
       <div className="mx-auto flex max-w-[1200px] flex-col items-center justify-between gap-4 md:flex-row">
         <p className="font-sans text-[14px] font-bold tracking-[0.36em]">SATQUERY</p>
         <p className="text-center text-[11px] tracking-[0.18em] text-[#9e9e9e] uppercase">
-          SIH · ISRO · VRSBench · Smart India Hackathon 2026
+          SIH · ISRO · Smart India Hackathon 2026
         </p>
       </div>
     </footer>
