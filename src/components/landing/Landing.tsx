@@ -9,16 +9,19 @@ import { Laboratory } from "./Laboratory";
 import { SiteNav } from "./SiteNav";
 
 export function Landing() {
-  const { ingestFiles, pairChoice, confirmPair, cancelPair, setScreen } = useSatQuery();
+  const { ingestFiles, pairChoice, confirmPair, cancelPair, setScreen, submit } = useSatQuery();
   const inputRef = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
 
   const upload = () => inputRef.current?.click();
 
   const handleAsk = (query: string) => {
-    // If they ask a query without uploading an image, we can just switch to workspace, or alert them.
-    // Let's just switch to workspace so they are in the chat.
-    setScreen("workspace");
+    const q = query.trim();
+    if (!q) {
+      setScreen("workspace");
+      return;
+    }
+    submit(q);
   };
 
   return (

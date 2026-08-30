@@ -1,0 +1,15 @@
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30
+pydantic>=2.9,<3.0
+pydantic-settings>=2.4
+python-multipart>=0.0.9
+numpy>=1.26
+pillow>=10.3
+
+# Optional but recommended: proper GeoTIFF/CRS support. Without it the backend
+# falls back to parsing GeoTIFF tags with Pillow, which covers most files.
+rasterio>=1.3; platform_system != "Emscripten"
+
+# Dev / test
+pytest>=8.0
+httpx>=0.27

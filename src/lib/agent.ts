@@ -85,3 +85,43 @@ export function resolveResult(query: string, mission: Mission): QueryResult {
 }
 
 export const AGENT_TIMING = [420, 640, 520, 880, 760, 540];
+
+const GREETING = /^(hi|hello|hey|yo|thanks|thank you|ok|okay|help)\b/;
+
+/**
+ * Map a free-text question (no upload) onto a scripted demo scene so Ask
+ * never lands on an empty workspace.
+ */
+export function matchDemoMission(query: string): string | null {
+  const q = query.toLowerCase().trim();
+  if (!q) return null;
+  if (GREETING.test(q) && q.length < 24) return null;
+
+  const has = (...words: string[]) => words.some((w) => q.includes(w));
+  if (has("flood", "inundat", "kosi", "saharsa", "water-cover", "water covered", "affected settlement")) {
+    return "kosi";
+  }
+  if (has("ship", "vessel", "tank", "harbour", "harbor", "mundra", "port", "quay", "crane")) {
+    return "mundra";
+  }
+  if (has("gurugram", "gurgaon", "built-up", "built up", "expansion", "changed", "change", "increased", "decreased")) {
+    return "gurgaon";
+  }
+  if (has("punjab", "doaba", "agriculture", "land-cover", "land cover", "crop", "describe", "caption")) {
+    return "doaba";
+  }
+  // Any real question still gets a scene so the demo never sits silent.
+  return q.length >= 8 ? "doaba" : null;
+}
+
+/** Hardcoded reply when the user is chatting with no scene loaded. */
+export function demoChatReply(query: string): string {
+  const q = query.toLowerCase().trim();
+  if (GREETING.test(q) && q.length < 24) {
+    return "SatQuery AI here. Ask a question about a satellite scene — flood extent, built-up change, ships in a harbour, land-cover — and I will load a demo and run the agent pipeline. You can also attach a GeoTIFF.";
+  }
+  if (q.includes("what can you") || q.includes("what do you do") || q === "help") {
+    return "I read one or two satellite images and answer in English. I pick the specialist (VQA, grounding, change, optical–SAR fusion), show evidence on the scene, and leave an audit trail. Try a demo query below, or upload your own GeoTIFF.";
+  }
+  return `I can work that question (“${query.slice(0, 140)}”) once I have imagery. Upload a GeoTIFF, or tap a demo query below and I will load a real scene and run the full agent — validator, router, specialists, evidence.`;
+}
