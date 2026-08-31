@@ -62,7 +62,7 @@ export function HistorySidebar({
             onClick={s.goIngress}
             className="text-sm font-semibold tracking-wide text-sat-heading"
           >
-            SATQUERY AI
+            SatQuery AI
           </button>
           <div className="flex items-center gap-3">
             <button 
