@@ -10,7 +10,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { AGENT_TIMING, classifyQuery, resolveResult } from "./agent";
+import { AGENT_TIMING, classifyQuery, demoChatReply, matchDemoMission, resolveResult } from "./agent";
+import { ApiError, backendEnabled, reportUrl, streamQuery, uploadAssets } from "./api";
 import { customMission, missions } from "./missions";
 import type {
   AgentStep,
@@ -79,6 +80,10 @@ type Store = {
   removeAsset: (assetId: string) => void;
   setScreen: (s: Screen) => void;
   loadSession: (id: string) => void;
+  /** True when NEXT_PUBLIC_SATQUERY_API is set and uploads are analysed server-side. */
+  backendLive: boolean;
+  /** Markdown report for the current run, or null on the scripted missions. */
+  reportHref: string | null;
 };
 
 const Ctx = createContext<Store | null>(null);
@@ -110,6 +115,11 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
   const urlBooted = useRef(false);
   const autoRan = useRef(false);
   const pendingAsk = useRef<string | null>(null);
+  // Uploaded File handles are kept so they can be posted to the agent backend on
+  // the first query; the blob URLs above are only good for display.
+  const uploadedFiles = useRef<File[]>([]);
+  const remote = useRef<{ sessionId: string; assetIds: string[]; signature: string } | null>(null);
+  const [reportHref, setReportHref] = useState<string | null>(null);
 
   const setQuery = useCallback((q: string) => {
     setQueryState(q);
@@ -161,6 +171,9 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
     runId.current += 1;
     pendingAsk.current = null;
     autoRan.current = false;
+    uploadedFiles.current = [];
+    remote.current = null;
+    setReportHref(null);
     setScreen("ingress");
     setMission(null);
     setRunning(false);
@@ -172,6 +185,9 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
     runId.current += 1;
     pendingAsk.current = null;
     autoRan.current = false;
+    uploadedFiles.current = [];
+    remote.current = null;
+    setReportHref(null);
     setMission(null);
     setResult(null);
     setThread([]);
@@ -210,6 +226,12 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
       const newMapped = files.map((f) => ({ name: f.name, src: URL.createObjectURL(f) }));
       const combined = [...currentAssets.map((a) => ({ name: a.name, src: a.src })), ...newMapped];
 
+      // Keep the File handles in the same order as the assets, and drop any
+      // server-side session because the input set just changed.
+      uploadedFiles.current = [...(isCustom ? uploadedFiles.current : []), ...files];
+      remote.current = null;
+      setReportHref(null);
+
       if (combined.length === 2 && screen === "ingress") {
         setPendingFiles(combined);
         setPairChoice(true);
@@ -236,6 +258,10 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
   const removeAsset = useCallback((assetId: string) => {
     if (mission?.id !== "upload") return;
     const remaining = mission.assets.filter((a) => a.id !== assetId);
+    const keptNames = new Set(remaining.map((a) => a.name));
+    uploadedFiles.current = uploadedFiles.current.filter((f) => keptNames.has(f.name));
+    remote.current = null;
+    setReportHref(null);
     if (remaining.length === 0) {
       setMission(null);
       setResult(null);
@@ -261,6 +287,7 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
     }
     setPairChoice(false);
     setPendingFiles(null);
+    remote.current = null; // the declared pair mode is a hint the backend needs
     pendingAsk.current = m.suggested[0];
     bootMission(m);
   }, [pendingFiles, bootMission]);
@@ -277,34 +304,10 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
     // Mock loading logic, in reality we'd fetch full session details
   }, []);
 
-  const submit = useCallback((text?: string) => {
-    if (!mission || running) return;
-    const q = (text ?? query).trim();
-    if (!q) return;
-    const classified = classifyQuery(q, mission.mode);
-    setIntent(classified);
-    if (text) setQueryState(text);
-
-    let currentSessionId = activeSessionId;
-    if (!currentSessionId) {
-      currentSessionId = String(runId.current);
-      setActiveSessionId(currentSessionId);
-      setHistory((prev) => {
-        if (prev.some((h) => h.id === currentSessionId)) return prev;
-        const title = q.split(" ").slice(0, 4).join(" ") + (q.split(" ").length > 4 ? "..." : "");
-        return [{ id: currentSessionId!, title, date: Date.now() }, ...prev];
-      });
-    }
-
-    const next = resolveResult(q, mission);
-    const id = ++runId.current;
-    setRunning(true);
-    setAuditOpen(true);
-    setSelectedId(null);
-    setMeasuring(false);
-    setResult(null);
+  /** Scripted mission path: animate the canned trace, then reveal the result. */
+  const localRun = useCallback((q: string, m: Mission, id: number) => {
+    const next = resolveResult(q, m);
     setSteps(next.trace.map((s) => ({ ...s, status: "pending" })));
-    setThread((t) => [...t, { id: `u-${id}`, role: "user", text: q }]);
 
     let i = 0;
     const tick = () => {
@@ -337,7 +340,154 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
       }
     };
     window.setTimeout(tick, AGENT_TIMING[0]);
-  }, [mission, query, running]);
+  }, []);
+
+  const flashError = useCallback((message: string) => {
+    setErrorMsg(message);
+    window.setTimeout(() => setErrorMsg(null), 4000);
+  }, []);
+
+  /**
+   * Agent-backend path for uploaded scenes: post the files once per input set,
+   * then stream the pipeline so the audit trail fills in stage by stage.
+   */
+  const remoteRun = useCallback(async (q: string, m: Mission, id: number) => {
+    try {
+      const signature = uploadedFiles.current
+        .map((f) => `${f.name}:${f.size}:${f.lastModified}`)
+        .join("|");
+
+      let session = remote.current;
+      if (!session || session.signature !== signature) {
+        const upload = await uploadAssets(uploadedFiles.current, { mode: m.mode });
+        session = {
+          sessionId: upload.sessionId,
+          assetIds: upload.assets.map((a) => a.id),
+          signature,
+        };
+        remote.current = session;
+        const blocking = upload.validation.issues.filter((i) => i.severity === "error");
+        if (blocking.length) flashError(blocking[0].message);
+      }
+
+      const result = await streamQuery(
+        { query: q, assetIds: session.assetIds, sessionId: session.sessionId, mode: m.mode },
+        {
+          onTrace: (steps) => {
+            if (runId.current === id) setSteps(steps);
+          },
+          onStep: (step) => {
+            if (runId.current !== id) return;
+            setSteps((prev) => prev.map((s) => (s.id === step.id ? step : s)));
+          },
+        }
+      );
+
+      if (runId.current !== id) return;
+      setResult(result);
+      if (result.compareDefault) setCompare(result.compareDefault);
+      setRunning(false);
+      setReportHref(result.sessionId ? reportUrl(result.sessionId, result.queryId) : null);
+      setThread((t) => [
+        ...t,
+        { id: `a-${id}`, role: "instrument", text: result.answer, result },
+      ]);
+      if (result.warnings.length) flashError(result.warnings[0]);
+      window.setTimeout(() => {
+        if (runId.current === id) setAuditOpen(false);
+      }, 2400);
+    } catch (err) {
+      if (runId.current !== id) return;
+      const detail = err instanceof ApiError ? err.message : "Agent backend unreachable.";
+      flashError(`${detail} Falling back to the local agent.`);
+      localRun(q, m, id);
+    }
+  }, [flashError, localRun]);
+
+  const rememberSession = useCallback((q: string) => {
+    let currentSessionId = activeSessionId;
+    if (!currentSessionId) {
+      currentSessionId = String(runId.current + 1);
+      setActiveSessionId(currentSessionId);
+      setHistory((prev) => {
+        if (prev.some((h) => h.id === currentSessionId)) return prev;
+        const words = q.split(" ");
+        const title = words.slice(0, 4).join(" ") + (words.length > 4 ? "..." : "");
+        return [{ id: currentSessionId!, title, date: Date.now() }, ...prev];
+      });
+    }
+  }, [activeSessionId]);
+
+  const beginRun = useCallback((q: string, m: Mission) => {
+    const classified = classifyQuery(q, m.mode);
+    setIntent(classified);
+    setQueryState("");
+    rememberSession(q);
+
+    const id = ++runId.current;
+    setRunning(true);
+    setAuditOpen(true);
+    setSelectedId(null);
+    setMeasuring(false);
+    setResult(null);
+    setThread((t) => [...t, { id: `u-${id}`, role: "user", text: q }]);
+
+    if (backendEnabled() && m.id === "upload" && uploadedFiles.current.length > 0) {
+      setSteps([]);
+      void remoteRun(q, m, id);
+    } else {
+      localRun(q, m, id);
+    }
+  }, [localRun, remoteRun, rememberSession]);
+
+  const submit = useCallback((text?: string) => {
+    if (running) return;
+    const q = (text ?? query).trim();
+    if (!q) return;
+
+    // No scene loaded: route onto a demo mission, or answer in chat so Ask
+    // is never a no-op.
+    if (!mission) {
+      const demo = missions.find((m) => m.id === matchDemoMission(q));
+      if (demo) {
+        setMission(demo);
+        setResult(null);
+        setSteps([]);
+        setSelectedId(null);
+        setReportOpen(false);
+        setMeasuring(false);
+        setMeasurePts([]);
+        setScale(1);
+        setPan({ x: 0, y: 0 });
+        setSwipe(52);
+        setCompare(demo.mode === "single" ? "primary" : "split");
+        setAcquiring(false);
+        setReportHref(null);
+        setScreen("workspace");
+        beginRun(q, demo);
+        return;
+      }
+
+      rememberSession(q);
+      const id = ++runId.current;
+      setScreen("workspace");
+      setQueryState("");
+      setIntent(null);
+      setRunning(true);
+      setThread((t) => [...t, { id: `u-${id}`, role: "user", text: q }]);
+      window.setTimeout(() => {
+        if (runId.current !== id) return;
+        setRunning(false);
+        setThread((t) => [
+          ...t,
+          { id: `a-${id}`, role: "instrument", text: demoChatReply(q) },
+        ]);
+      }, 420);
+      return;
+    }
+
+    beginRun(q, mission);
+  }, [mission, query, running, beginRun, rememberSession]);
 
   useEffect(() => {
     if (!mission || acquiring || running) return;
@@ -424,6 +574,8 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
       removeAsset,
       setScreen,
       loadSession,
+      backendLive: backendEnabled(),
+      reportHref,
     }),
     [
       screen,
@@ -462,6 +614,7 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
       removeAsset,
       setScreen,
       loadSession,
+      reportHref,
     ]
   );
 

@@ -1,0 +1,321 @@
+"""Single-image specialists: VQA (mandatory baseline), captioning, grounding."""
+
+from __future__ import annotations
+
+import numpy as np
+
+from app.schemas.agent import Metric
+from app.services import analysis
+from app.tools import common
+from app.tools.base import Tool, ToolContext, ToolOutput
+
+_YES_NO_OPENERS = ("is ", "are ", "does ", "do ", "has ", "have ", "was ", "were ", "can ", "any ")
+_CLASS_TARGETS = {"water", "vegetation", "builtup"}
+_OBJECT_TARGETS = {"ship", "tank"}
+
+
+def _is_yes_no(query: str) -> bool:
+    lowered = query.strip().lower()
+    return lowered.startswith(_YES_NO_OPENERS)
+
+
+def _class_kind(target: str) -> str:
+    return target if target in _CLASS_TARGETS else "builtup" if target in _OBJECT_TARGETS else "water"
+
+
+class VqaTool(Tool):
+    name = "RS-VQA"
+    role = "single-image visual question answering"
+    task = "vqa"
+    model_key = "vqa"
+    produces = ["answer", "metrics", "mask"]
+
+    def run_baseline(self, ctx: ToolContext) -> ToolOutput:
+        asset = ctx.primary_asset
+        stats = common.stats_for(asset, ctx.primary_scene)
+        target = ctx.target
+        dominant_label, dominant_pct = stats.dominant()
+
+        metrics = [
+            Metric(label="Dominant class", value=common.nice(dominant_label), hint=common.fmt_percent(dominant_pct)),
+            common.area_metric("Water", stats.coverage("water"), stats.area_km2("water"), stats.water.method),
+            common.area_metric(
+                "Vegetation", stats.coverage("vegetation"), stats.area_km2("vegetation"), stats.vegetation.method
+            ),
+            common.area_metric(
+                "Built-up", stats.coverage("builtup"), stats.area_km2("builtup"), stats.builtup.method
+            ),
+        ]
+
+        observations = [
+            f"Land-cover split: {common.describe_scene(stats)}.",
+            f"Modality read as {asset.modality} ({asset.modality_source}); {asset.gsd} GSD, {asset.format}.",
+        ]
+        masks = []
+        boxes = []
+        layers: list = []
+
+        if target in _CLASS_TARGETS:
+            kind = target
+            result = stats.result(kind)
+            coverage = stats.coverage(kind)
+            area = common.fmt_area(stats.area_km2(kind))
+            label = common.TARGET_LABELS[kind]
+            extent = f"{area} ({common.fmt_percent(coverage)} of the frame)" if area else common.fmt_percent(coverage)
+
+            if _is_yes_no(ctx.query):
+                verdict = "Yes" if coverage >= 15 else "Partly" if coverage >= 3 else "No"
+                answer = (
+                    f"{verdict} — {label} covers {extent}. "
+                    f"The dominant class in this scene is {dominant_label} at {common.fmt_percent(dominant_pct)}."
+                )
+            else:
+                answer = (
+                    f"{label.capitalize()} covers {extent} of this {asset.modality} scene, "
+                    f"measured with {result.method}. Dominant class overall is {dominant_label} "
+                    f"({common.fmt_percent(dominant_pct)})."
+                )
+
+            observations.extend(result.notes)
+            mask_id = {
+                "water": common.MASK_ID_WATER,
+                "vegetation": common.MASK_ID_VEGETATION,
+                "builtup": common.MASK_ID_BUILTUP,
+            }[kind]
+            color = {
+                "water": common.COLOR_WATER,
+                "vegetation": common.COLOR_VEGETATION,
+                "builtup": common.COLOR_URBAN,
+            }[kind]
+            mask = common.build_mask(mask_id, common.nice(label), color, result.mask)
+            if mask:
+                masks.append(mask)
+            layers = common.layers_for(["water", "vegetation", "urban"])
+            confidence = analysis.confidence_from(result.separability, coverage)
+
+        elif target in _OBJECT_TARGETS:
+            candidates = _object_candidates(ctx, stats)
+            answer = (
+                f"{len(candidates)} candidate {common.TARGET_LABELS[target]} detected by the compactness "
+                f"baseline. Object *identity* is not verified: counting {common.TARGET_LABELS[target]} "
+                "reliably needs the fine-tuned grounding model (Qwen2.5-VL / Grounding DINO on DIOR-RSVG), "
+                "so treat this as a shortlist rather than a count."
+            )
+            boxes = candidates
+            observations.append(
+                "Candidates are bright, compact components; no class-specific detector is wired yet."
+            )
+            layers = common.layers_for(["grounding"])
+            confidence = min(0.55, analysis.confidence_from(stats.builtup.separability, stats.coverage("builtup")))
+
+        else:
+            answer = (
+                f"This {asset.modality} scene is dominated by {dominant_label} "
+                f"({common.fmt_percent(dominant_pct)}). Full split: {common.describe_scene(stats)}."
+            )
+            layers = common.layers_for(["water", "vegetation", "urban"])
+            confidence = analysis.confidence_from(
+                max(stats.water.separability, stats.vegetation.separability),
+                dominant_pct,
+            )
+
+        return ToolOutput(
+            tool=self.name,
+            model=self.model_key,
+            title=(
+                "Scene interrogation"
+                if target == "generic"
+                else f"{common.nice(common.TARGET_LABELS.get(target, 'scene'))} query"
+            ),
+            answer=answer,
+            observations=observations,
+            metrics=metrics,
+            masks=masks,
+            boxes=boxes,
+            layers=layers,
+            confidence=confidence,
+            params={
+                "target_class": target,
+                "water_method": stats.water.method,
+                "water_threshold": round(stats.water.threshold, 4),
+                "vegetation_method": stats.vegetation.method,
+            },
+            outputs={
+                "dominant_class": dominant_label,
+                "water_percent": round(stats.coverage("water"), 2),
+                "vegetation_percent": round(stats.coverage("vegetation"), 2),
+                "builtup_percent": round(stats.coverage("builtup"), 2),
+            },
+        )
+
+
+class CaptionTool(Tool):
+    name = "RS-Captioner"
+    role = "scene description and land-cover tagging"
+    task = "caption"
+    model_key = "caption"
+    produces = ["answer", "observations", "mask"]
+
+    def run_baseline(self, ctx: ToolContext) -> ToolOutput:
+        asset = ctx.primary_asset
+        scene = ctx.primary_scene
+        stats = common.stats_for(asset, scene)
+        breakdown = stats.breakdown()
+        dominant_label, dominant_pct = breakdown[0]
+        secondary_label, secondary_pct = breakdown[1] if len(breakdown) > 1 else ("", 0.0)
+
+        texture = analysis.speckle_index(scene.refl_gray)
+        sensor_phrase = {
+            "sar": "SAR amplitude scene (no colour information; structure and roughness drive the read)",
+            "multispectral": f"{scene.bands}-band multispectral stack",
+            "optical": "optical scene",
+        }[asset.modality]
+
+        answer = (
+            f"{sensor_phrase.capitalize()} from {asset.sensor}, {asset.gsd} GSD. "
+            f"{dominant_label.capitalize()} dominates at {common.fmt_percent(dominant_pct)}"
+            + (f", followed by {secondary_label} at {common.fmt_percent(secondary_pct)}. " if secondary_label else ". ")
+            + f"Full land-cover split: {common.describe_scene(stats)}."
+        )
+
+        observations = [
+            f"Texture (coefficient of variation) {texture:.3f} — "
+            + ("high, consistent with speckle or dense structure." if texture > 0.16 else "low, smooth surfaces dominate."),
+            f"Water extraction used {stats.water.method}; vegetation used {stats.vegetation.method}.",
+        ]
+        if asset.meta and asset.meta.georeferenced:
+            observations.append(f"Georeferenced in {asset.crs or 'unknown CRS'} at {asset.coords}.")
+        else:
+            observations.append("No geotransform, so the caption reports frame fractions rather than ground area.")
+        observations.extend(stats.water.notes)
+
+        dominant_kind = {"water": "water", "vegetation": "vegetation", "built-up": "builtup"}.get(dominant_label)
+        masks = []
+        if dominant_kind:
+            mask_id = {
+                "water": common.MASK_ID_WATER,
+                "vegetation": common.MASK_ID_VEGETATION,
+                "builtup": common.MASK_ID_BUILTUP,
+            }[dominant_kind]
+            color = {
+                "water": common.COLOR_WATER,
+                "vegetation": common.COLOR_VEGETATION,
+                "builtup": common.COLOR_URBAN,
+            }[dominant_kind]
+            mask = common.build_mask(
+                mask_id, common.nice(dominant_label), color, stats.mask(dominant_kind), opacity=0.3
+            )
+            if mask:
+                masks.append(mask)
+
+        return ToolOutput(
+            tool=self.name,
+            model=self.model_key,
+            title="Scene description",
+            answer=answer,
+            observations=observations,
+            metrics=[
+                Metric(label=common.nice(label), value=common.fmt_percent(value))
+                for label, value in breakdown
+            ],
+            masks=masks,
+            layers=common.layers_for(["water", "vegetation", "urban"]),
+            confidence=analysis.confidence_from(
+                max(stats.water.separability, stats.vegetation.separability), dominant_pct
+            ),
+            params={"bands": scene.bands, "texture_cv": round(texture, 4)},
+            outputs={label: round(value, 2) for label, value in breakdown},
+        )
+
+
+class GroundingTool(Tool):
+    """Text-guided grounding plus referring segmentation on the same target."""
+
+    name = "RS-Grounder"
+    role = "text-guided grounding and referring segmentation"
+    task = "grounding"
+    model_key = "grounding"
+    produces = ["boxes", "mask"]
+
+    def run_baseline(self, ctx: ToolContext) -> ToolOutput:
+        asset = ctx.primary_asset
+        stats = common.stats_for(asset, ctx.primary_scene)
+        target = ctx.target
+        label = common.TARGET_LABELS.get(target, "scene features")
+
+        if target in _OBJECT_TARGETS or target == "generic":
+            boxes = _object_candidates(ctx, stats, target=target)
+            mask_array = stats.mask("builtup")
+            separability = stats.builtup.separability
+            caveat = (
+                f"Boxes are compact bright components, not verified {label}. Class-accurate grounding "
+                "needs the fine-tuned Qwen2.5-VL / Grounding DINO head (DIOR-RSVG, VRSBench)."
+            )
+            confidence = min(0.6, analysis.confidence_from(separability, stats.coverage("builtup"), len(boxes)))
+        else:
+            kind = _class_kind(target)
+            result = stats.result(kind)
+            mask_array = result.mask
+            boxes = common.boxes_from_mask(mask_array, target)
+            separability = result.separability
+            caveat = f"Regions delineated by {result.method}."
+            confidence = analysis.confidence_from(separability, stats.coverage(kind), len(boxes))
+
+        masks = []
+        mask = common.build_mask(
+            common.MASK_ID_WATER if target == "water" else common.MASK_ID_BUILTUP,
+            f"{common.nice(label)} segmentation",
+            common.COLOR_WATER if target == "water" else common.COLOR_GROUNDING,
+            mask_array,
+            opacity=0.32,
+        )
+        if mask:
+            masks.append(mask)
+
+        # w and h are percentages of each axis, so the product needs /100 to be
+        # a percentage of frame area.
+        largest = max((b.w * b.h / 100.0 for b in boxes), default=0.0)
+        return ToolOutput(
+            tool=self.name,
+            model=self.model_key,
+            title=f"Grounding: {label}",
+            answer=(
+                f"{len(boxes)} region(s) grounded for “{ctx.query.strip() or label}”. "
+                f"Boxes are normalised to the frame (0–100). {caveat}"
+            ),
+            observations=[
+                f"Largest region occupies {largest:.1f}% of the frame area." if boxes else "No region passed the minimum-area filter.",
+                f"Segmentation coverage {common.fmt_percent(analysis.coverage_percent(mask_array))}.",
+            ],
+            metrics=[
+                Metric(label="Regions", value=str(len(boxes)), hint="after min-area filter"),
+                common.area_metric(
+                    common.nice(label),
+                    analysis.coverage_percent(mask_array),
+                    analysis.area_km2(
+                        mask_array,
+                        asset.meta.gsd_meters if asset.meta else None,
+                        asset.meta.width if asset.meta else 0,
+                        asset.meta.height if asset.meta else 0,
+                    ),
+                    "grounded extent",
+                ),
+            ],
+            boxes=boxes,
+            masks=masks,
+            layers=common.layers_for(["grounding", "settlements", "water"]),
+            confidence=confidence,
+            params={"target_class": target, "min_area_fraction": analysis.MIN_COMPONENT_FRACTION},
+            outputs={"box_count": len(boxes), "coverage_percent": round(analysis.coverage_percent(mask_array), 2)},
+        )
+
+
+def _object_candidates(ctx: ToolContext, stats: common.SceneStats, target: str = "generic") -> list:
+    """Bright compact blobs, used as an honest shortlist when no object detector
+    is wired. Water is excluded so we do not box open sea as an object."""
+    scene = ctx.primary_scene
+    gray = analysis.box_mean(scene.gray, radius=1)
+    threshold = float(np.percentile(gray, 88))
+    candidate = (gray >= threshold) & ~stats.mask("water")
+    prefix = f"Candidate {common.TARGET_LABELS.get(target, 'object').rstrip('s')}"
+    return common.boxes_from_mask(candidate, target if target in _OBJECT_TARGETS else "generic", limit=10, label_prefix=prefix)
