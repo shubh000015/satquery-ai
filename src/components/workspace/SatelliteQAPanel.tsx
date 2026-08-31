@@ -77,7 +77,7 @@ export function SatelliteQAPanel({ isMobile, isFullWidth }: { isMobile?: boolean
                             {msg.result.confidence && (
                               <div className="flex items-center justify-between border-b border-sat-hairline pb-2">
                                 <span className="text-[13px] text-sat-nav">Confidence Score</span>
-                                <span className="text-[13px] font-medium text-sat-green">{(msg.result.confidence * 100).toFixed(1)}%</span>
+                                <span className="text-[13px] font-medium text-sat-heading">{(msg.result.confidence * 100).toFixed(1)}%</span>
                               </div>
                             )}
                           </div>
