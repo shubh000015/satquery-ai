@@ -1,0 +1,19 @@
+# SatQuery AI — fine-tuning stack (SIH26167 task #2).
+# Install on a machine with an NVIDIA GPU (CUDA). On Kaggle/Colab most of
+# these are preinstalled; the pip install is still safe to run.
+
+torch>=2.4
+transformers>=4.51
+accelerate>=1.0
+peft>=0.14
+bitsandbytes>=0.45        # 4-bit NF4 quantisation (QLoRA); NVIDIA CUDA only
+datasets>=3.0
+qwen-vl-utils>=0.0.10     # official Qwen2.5-VL image preprocessing helpers
+pillow>=10.0
+numpy>=1.26
+pyarrow>=15.0             # reads BigEarthNet v2.0 metadata.parquet
+
+# Serving the fine-tuned adapter to the SatQuery backend
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.8

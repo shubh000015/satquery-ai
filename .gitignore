@@ -51,3 +51,8 @@ backend/demo_out.txt
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+# ml training artifacts (datasets and checkpoints stay out of git)
+ml/data/
+ml/runs/
+ml/.venv/
