@@ -4,7 +4,7 @@ export function Brief() {
   return (
     <section id="models" className="relative bg-black px-6 py-20 md:px-10">
       <div className="mx-auto max-w-[1200px]">
-        <h2 className="font-sans text-center text-[clamp(1.8rem,4vw,3.4rem)] font-semibold tracking-[0.12em] text-[#00D964]">
+        <h2 className="font-sans text-center text-[clamp(1.8rem,4vw,3.4rem)] font-bold tracking-[0.12em] text-[#00D964]">
           Models
         </h2>
 

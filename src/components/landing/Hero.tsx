@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { DESTINATIONS, type Destination } from "./destinations";
 import { Paperclip } from "lucide-react";
+import { Typewriter } from "./Typewriter";
 
 export function Hero({
   onAsk,
@@ -26,8 +27,9 @@ export function Hero({
       <div className="relative z-10 flex h-full flex-col">
         <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
           <h1 className="font-sans mt-3 text-[clamp(3rem,10vw,8rem)] font-bold leading-[0.84] tracking-[0.06em] text-[#fafafa]">
-            SATQUERY AI
+            SatQuery AI
           </h1>
+          <Typewriter />
         </div>
 
         <div id="book" className="mx-auto mb-16 w-[min(860px,calc(100%-2rem))] scroll-mt-24">
