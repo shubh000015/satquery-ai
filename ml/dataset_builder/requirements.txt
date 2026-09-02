@@ -1,0 +1,5 @@
+# Only what you need to BUILD the dataset on a laptop (CPU OK).
+# No PyTorch / Unsloth / GPU packages here.
+numpy>=1.26
+pillow>=10.0
+pyarrow>=15.0
