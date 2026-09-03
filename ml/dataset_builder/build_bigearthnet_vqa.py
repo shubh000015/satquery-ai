@@ -25,18 +25,18 @@ Each JSONL line is RSVQA-style with a relative image path:
     {"image": "images_s1/....png", "question": "...", "answer": "...",
      "source": "bigearthnet", "modality": "sar", "category": "multi-label"}
 
-Typical one-third run (extract ~1/3 of tiles from BOTH S1 and S2):
+Typical one-third run on a Mac (extract ~1/3 of tiles from BOTH S1 and S2):
 
-    python build_bigearthnet_vqa.py \\
-        --images-s2 BigEarthNet-S2 \\
-        --images-s1 BigEarthNet-S1 \\
-        --metadata metadata.parquet \\
-        --out ben_vqa_third \\
-        --fraction 0.33
+    python3 build_bigearthnet_vqa.py \\
+        --images-s2 ~/ben/BigEarthNet-S2 \\
+        --images-s1 ~/ben/BigEarthNet-S1 \\
+        --metadata ~/ben/metadata.parquet \\
+        --out ~/ben/ben_vqa_third \\
+        --fraction 0.33 --require-s1
 
 Install (once):
 
-    pip install -r requirements.txt
+    python3 -m pip install -r requirements.txt
 """
 
 from __future__ import annotations
@@ -526,11 +526,28 @@ def main() -> None:
         "images_s2": "images_s2",
         "images_s1": "images_s1" if include_s1 else None,
         "note": (
-            "Image paths inside train.jsonl are relative to this folder. "
-            "Zip train.jsonl + images_s2 + images_s1 + manifest.json for Kaggle."
+            "Image paths inside train.jsonl are relative to this folder "
+            "(forward slashes). Upload the folder to Kaggle as-is with the "
+            "Kaggle CLI, or zip it only if you use the website file picker."
         ),
     }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    # Lets `kaggle datasets create -p <out>` work without a manual zip.
+    metadata_path = out / "dataset-metadata.json"
+    if not metadata_path.exists():
+        metadata_path.write_text(
+            json.dumps(
+                {
+                    "title": "SatQuery BigEarthNet VQA (S1+S2)",
+                    "id": "YOUR_KAGGLE_USERNAME/ben-vqa-third",
+                    "licenses": [{"name": "CC-BY-SA-4.0"}],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
 
     print()
     print("DONE")
@@ -540,17 +557,11 @@ def main() -> None:
     print(f"  Q&A pairs    : {len(rows)}")
     print(f"  output       : {out.resolve()}")
     print()
-    print("Next: zip this folder and upload to Kaggle as a Dataset.")
-    if sys.platform == "win32":
-        print(f"  cd {out.resolve()}")
-        parts = "train.jsonl,images_s2,manifest.json"
-        if include_s1:
-            parts = "train.jsonl,images_s2,images_s1,manifest.json"
-        print(f"  Compress-Archive -Path {parts} -DestinationPath ..\\ben_vqa_third.zip")
-    else:
-        print(f"  cd {out.resolve()}")
-        extra = " images_s1" if include_s1 else ""
-        print(f"  zip -r ../ben_vqa_third.zip train.jsonl images_s2{extra} manifest.json")
+    print("Upload this folder as-is (Mac). No local zip required:")
+    print(f"  cd {out.resolve()}")
+    print("  # edit dataset-metadata.json: replace YOUR_KAGGLE_USERNAME")
+    print("  kaggle datasets create -p . --dir-mode zip")
+    print("  # --dir-mode zip only packs the upload; your disk stays a normal folder")
 
 
 if __name__ == "__main__":

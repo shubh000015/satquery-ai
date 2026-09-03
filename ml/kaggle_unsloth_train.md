@@ -1,7 +1,8 @@
 # Kaggle + Unsloth training (copy-paste cells)
 
-Use this **after** you built `ben_vqa_third` with `dataset_builder/`
-(S1 + S2 PNGs + `train.jsonl`).
+Use this **after** you built `ben_vqa_third` on a Mac with `dataset_builder/`
+(S1 + S2 PNGs + `train.jsonl`) and uploaded the **folder** to Kaggle (CLI
+`--dir-mode zip` is fine — you do not need a local .zip).
 
 ## Notebook setup
 
