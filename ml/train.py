@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -38,9 +39,44 @@ from transformers import (
     BitsAndBytesConfig,
     Qwen2_5_VLForConditionalGeneration,
     Trainer,
+    TrainerCallback,
     TrainingArguments,
 )
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+
+
+class TimedCheckpointCallback(TrainerCallback):
+    """Force a checkpoint every `every_minutes` wall-clock minutes (Kaggle-safe)."""
+
+    def __init__(self, every_minutes: float = 10.0):
+        self.every_seconds = max(60.0, every_minutes * 60.0)
+        self._last = time.monotonic()
+
+    def on_step_end(self, args, state, control, **kwargs):
+        now = time.monotonic()
+        if now - self._last >= self.every_seconds:
+            control.should_save = True
+            self._last = now
+            print(
+                f"\n[checkpoint] timed save at step {state.global_step} "
+                f"(every {self.every_seconds / 60:.0f} min)\n",
+                flush=True,
+            )
+        return control
+
+
+def find_latest_checkpoint(out: Path) -> Path | None:
+    ckpts = [p for p in out.glob("checkpoint-*") if p.is_dir()]
+    if not ckpts:
+        return None
+
+    def step_num(path: Path) -> int:
+        try:
+            return int(path.name.split("-")[-1])
+        except ValueError:
+            return -1
+
+    return max(ckpts, key=step_num)
 
 DEFAULT_MODEL = "Qwen/Qwen2.5-VL-3B-Instruct"
 
@@ -133,6 +169,13 @@ def main() -> None:
     parser.add_argument("--lora-alpha", type=int, default=32)
     parser.add_argument("--max-samples", type=int, default=None)
     parser.add_argument("--seed", type=int, default=13)
+    parser.add_argument("--save-every-minutes", type=float, default=10.0,
+                        help="Wall-clock minutes between forced checkpoints (Kaggle)")
+    parser.add_argument("--save-steps", type=int, default=50,
+                        help="Also checkpoint every N steps")
+    parser.add_argument("--save-total-limit", type=int, default=3)
+    parser.add_argument("--no-resume", action="store_true",
+                        help="Ignore existing checkpoint-* and start fresh")
     args = parser.parse_args()
 
     if not torch.cuda.is_available():
@@ -193,8 +236,9 @@ def main() -> None:
         weight_decay=0.01,
         max_grad_norm=1.0,
         logging_steps=10,
-        save_strategy="epoch",
-        save_total_limit=2,
+        save_strategy="steps",
+        save_steps=args.save_steps,
+        save_total_limit=args.save_total_limit,
         eval_strategy="epoch" if val_ds else "no",
         bf16=bf16_ok,
         fp16=not bf16_ok,
@@ -207,14 +251,21 @@ def main() -> None:
         seed=args.seed,
     )
 
+    resume = None if args.no_resume else find_latest_checkpoint(args.out)
+    if resume:
+        print(f"RESUMING from {resume}")
+    else:
+        print("No checkpoint found — starting a new run")
+
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=train_ds,
         eval_dataset=val_ds,
         data_collator=Collator(processor),
+        callbacks=[TimedCheckpointCallback(args.save_every_minutes)],
     )
-    trainer.train()
+    trainer.train(resume_from_checkpoint=str(resume) if resume else None)
 
     adapter_dir = args.out / "adapter"
     model.save_pretrained(str(adapter_dir))
