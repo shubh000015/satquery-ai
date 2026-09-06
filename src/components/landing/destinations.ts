@@ -83,29 +83,24 @@ export const LABS = [
   },
   {
     no: "02",
-    title: "Geographically Anchored Captioning",
+    title: "Visual Question Answering (VQA)",
     body: "It automatically generates highly accurate text descriptions detailing specific land-use and land-cover classes present in satellite patches.",
   },
   {
     no: "03",
-    title: "Visual Question Answering (VQA)",
-    body: "It answers direct user queries about uploaded satellite images through both binary and multiple-choice conversational formats.",
+    title: "Intelligent Model Routing",
+    body: "Automatically selects the appropriate specialized model for each query, enabling more accurate multimodal analysis",
   },
   {
     no: "04",
     title: "Spatial Grounding and Detection",
     body: "It visually pinpoints user-requested geographical features directly on the image using precise bounding box predictions.",
   },
-  {
-    no: "05",
-    title: "Factual Knowledge Retrieval (RAG)",
-    body: "It dynamically pulls external scientific metadata and geographical records to ensure all image analysis is grounded in real-world facts.",
-  },
 ] as const;
 
 export const PS_COVER = [
-  { k: "Vision-Language Model", v: "Handles complex VQA, reasoning, and captioning across multiple modalities." },
-  { k: "Earth Foundation Model", v: "Specialized encoder for satellite imagery and multi-temporal features." },
-  { k: "Spatial Detection Model", v: "Pinpoints features with precise bounding boxes and segmentation masks." },
-  { k: "RAG Engine", v: "Retrieves external geographical and scientific context to ground answers." },
+  { k: "VQA", model: "Qwen2.5-VL", v: "Satellite image question answering and scene description using optical or SAR imagery." },
+  { k: "Grounding", model: "Grounding DINO + SAM 2", v: "Text-guided object localization and pixel-level segmentation for identifying requested regions." },
+  { k: "Bi-Temporal Analysis", model: "ChangeFormer + Qwen2.5-VL", v: "Detects changes between images captured at different times and generates natural-language change descriptions." },
+  { k: "SAR + Optical Analysis", model: "CROMA + Qwen2.5-VL", v: "Fuses SAR and optical imagery to extract complementary information and provide context-aware analysis." },
 ] as const;
