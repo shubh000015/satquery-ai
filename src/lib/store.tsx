@@ -263,16 +263,17 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
     remote.current = null;
     setReportHref(null);
     if (remaining.length === 0) {
+      // No images left — clear mission so chat expands to full width
       setMission(null);
       setResult(null);
-      setThread([]);
-      setActiveSessionId(null);
     } else {
+      // One image left — update mission in-place, keep chat thread
       const mapped = remaining.map((a) => ({ name: a.name, src: a.src }));
       const m = customMission(mapped);
-      bootMission(m);
+      setMission(m);
+      setCompare("primary");
     }
-  }, [mission, bootMission]);
+  }, [mission]);
 
   const confirmPair = useCallback((mode: InputMode) => {
     if (!pendingFiles) return;
