@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { useSatQuery } from "@/lib/store";
 import type { Asset, CompareMode, LayerId } from "@/lib/types";
 
@@ -35,17 +35,8 @@ export function ImageryStage() {
   const active = new Set((s.result?.layers ?? []).filter((l) => l.active).map((l) => l.id));
   const layerFilterOn = (s.result?.layers.length ?? 0) > 0;
 
-  useEffect(() => {
-    const el = stageRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const factor = e.deltaY > 0 ? 0.92 : 1.08;
-      s.setScale((v) => Math.min(6, Math.max(0.7, v * factor)));
-    };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, [s.setScale]);
+
+
 
   if (!primary) return null;
 
@@ -65,33 +56,14 @@ export function ImageryStage() {
       : null;
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
+    <div className="relative flex h-full w-full flex-col">
       <div
         ref={stageRef}
-        className={`relative min-h-0 flex-1 overflow-hidden bg-black ${s.measuring ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"}`}
-        onPointerDown={(e) => {
-          if (s.measuring) return;
-          drag.current = { x: s.pan.x, y: s.pan.y, px: e.clientX, py: e.clientY };
-          (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
-        }}
-        onPointerMove={(e) => {
-          if (!drag.current || s.measuring) return;
-          s.setPan({
-            x: drag.current.x + (e.clientX - drag.current.px),
-            y: drag.current.y + (e.clientY - drag.current.py),
-          });
-        }}
-        onPointerUp={() => {
-          drag.current = null;
-        }}
+        className={`relative min-h-0 flex-1 overflow-hidden bg-black ${s.measuring ? "cursor-crosshair" : "cursor-default"}`}
       >
         <div
-          className="absolute inset-3 overflow-hidden rounded-md"
+          className="absolute inset-0 overflow-hidden"
           onClick={onPointer}
-          style={{
-            transform: `translate(${s.pan.x}px, ${s.pan.y}px) scale(${s.scale})`,
-            transformOrigin: "center center",
-          }}
         >
           <Frame
             primary={primary}
@@ -102,7 +74,7 @@ export function ImageryStage() {
             acquiring={s.acquiring}
             hasResult={!!s.result && !s.running}
           />
-          <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
             {s.result?.masks.map((m) => {
               const layerId = MASK_LAYER[m.id];
               if (layerFilterOn && layerId && !active.has(layerId)) return null;
@@ -170,16 +142,8 @@ export function ImageryStage() {
           <div className="scan absolute inset-0 z-20 bg-void/30" />
         )}
 
-        <div className="pointer-events-none absolute bottom-3 left-3 font-mono text-[10px] text-brass">
-          {s.acquiring ? "acquiring…" : s.running ? "running" : "live"}
-        </div>
-        <button
-          type="button"
-          onClick={s.resetView}
-          className="absolute right-3 bottom-3 text-[11px] text-mute hover:text-ink"
-        >
-          reset
-        </button>
+
+
         {meters !== null && (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-void/80 px-3 py-1 font-mono text-[11px] text-signal">
             {meters < 1 ? `${Math.round(meters * 1000)} m` : `${meters.toFixed(2)} km`}
@@ -275,24 +239,17 @@ function Plate({ asset, label, running, hasResult }: { asset: Asset; label?: str
         draggable={false}
       />
       {sar && !hasResult && <div className="speckle absolute inset-0" />}
-      {label && (
-        <div className="absolute top-2 left-2 flex items-center gap-2">
-          <span className="rounded bg-void/70 px-1.5 py-0.5 font-mono text-[10px] text-brass">
-            {label} · {asset.modality} · {asset.date}
-          </span>
-          {isCustom && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                s.removeAsset(asset.id);
-              }}
-              title="Remove image"
-              className="flex h-5 w-5 items-center justify-center rounded bg-void/70 text-brass transition-colors hover:bg-red-500/80 hover:text-white"
-            >
-              <XIcon size={12} />
-            </button>
-          )}
-        </div>
+      {isCustom && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            s.removeAsset(asset.id);
+          }}
+          title="Remove image"
+          className="absolute top-2 right-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white/70 backdrop-blur-sm transition-colors hover:bg-red-500/80 hover:text-white"
+        >
+          <XIcon size={14} />
+        </button>
       )}
     </div>
   );

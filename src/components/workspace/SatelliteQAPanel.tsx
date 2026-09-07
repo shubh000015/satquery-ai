@@ -133,22 +133,41 @@ export function SatelliteQAPanel({ isMobile, isFullWidth }: { isMobile?: boolean
               ))}
 
               {s.running && (
-                <div className="rounded-xl border border-[#00b4ff]/30 bg-[#00b4ff]/8 p-5">
-                  <p className="text-[11px] tracking-[0.2em] text-[#00b4ff] uppercase">Agent routing</p>
+                <div className="overflow-hidden rounded-xl border border-sat-hairline bg-[#0c0c0c] p-4">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="h-2 w-2 rounded-full"
+                      style={{
+                        background: "#23d92c",
+                        boxShadow: "0 0 6px rgba(45,220,55,.65)",
+                      }}
+                    />
+                    <span className="text-[12px] font-semibold tracking-[0.15em] text-sat-heading uppercase">
+                      Agent routing
+                    </span>
+                  </div>
                   {s.steps.length ? (
-                    <ol className="mt-3 space-y-1.5">
+                    <ol className="mt-3 space-y-2">
                       {s.steps.map((st) => (
-                        <li key={st.id} className="flex items-center gap-2 text-[12px] text-sat-msg-text">
+                        <li key={st.id} className="flex items-center gap-2 text-[12px]">
                           <span
-                            className={`h-1.5 w-1.5 rounded-full ${
-                              st.status === "done"
-                                ? "bg-sat-green"
-                                : st.status === "running"
-                                  ? "bg-[#00b4ff]"
-                                  : "bg-white/20"
+                            className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                              st.status === "running" ? "live-dot" : ""
                             }`}
+                            style={{
+                              background:
+                                st.status === "done"
+                                  ? "#23d92c"
+                                  : st.status === "running"
+                                    ? "#f5c40a"
+                                    : "#6b6b6d",
+                            }}
                           />
-                          <span className={st.status === "pending" ? "opacity-40" : ""}>{st.label}</span>
+                          <span
+                            className={st.status === "pending" ? "text-sat-subtitle opacity-40" : "text-sat-msg-text"}
+                          >
+                            {st.label}
+                          </span>
                         </li>
                       ))}
                     </ol>
