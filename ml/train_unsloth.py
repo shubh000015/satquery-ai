@@ -22,10 +22,13 @@ Pass `--resume-dir` if checkpoints live under `/kaggle/input/...`.
 Example (Kaggle cell)::
 
     !python train_unsloth.py \\
-        --data /kaggle/input/ben-vqa-third \\
+        --data /kaggle/input/bigearthnet-s2-vqa \\
         --out /kaggle/working/ben-lora \\
         --save-every-minutes 10 \\
         --resume-dir /kaggle/input/ben-lora-checkpoints
+
+Prefer a notebook? `ml/kaggle_train_unsloth.ipynb` is the same logic as
+ready-to-upload Kaggle cells.
 """
 
 from __future__ import annotations
@@ -88,10 +91,27 @@ def find_latest_checkpoint(roots: list[Path]) -> Path | None:
     return max(candidates, key=step_num)
 
 
+def resolve_data_root(data_root: Path) -> Path:
+    """Accept the dataset root or a folder one level above train.jsonl.
+
+    Kaggle datasets sometimes unpack with an extra top-level folder depending
+    on how they were uploaded, so look one level down before giving up.
+    """
+    if (data_root / "train.jsonl").exists():
+        return data_root
+    if data_root.exists():
+        for child in sorted(p for p in data_root.iterdir() if p.is_dir()):
+            if (child / "train.jsonl").exists():
+                return child
+    raise SystemExit(
+        f"train.jsonl not found under {data_root}. "
+        "Attach the Kaggle dataset (knayamket/bigearthnet-s2-vqa) or fix --data."
+    )
+
+
 def load_dataset(data_root: Path, max_samples: int | None):
+    data_root = resolve_data_root(data_root)
     train_jsonl = data_root / "train.jsonl"
-    if not train_jsonl.exists():
-        raise SystemExit(f"Missing {train_jsonl}")
 
     rows = []
     with train_jsonl.open(encoding="utf-8") as fh:
@@ -159,7 +179,13 @@ def seed_checkpoints_from_resume(resume_dir: Path | None, out_dir: Path) -> None
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--data", type=Path, required=True, help="Folder with train.jsonl + images_s2/ + images_s1/")
+    parser.add_argument(
+        "--data",
+        type=Path,
+        default=Path("/kaggle/input/bigearthnet-s2-vqa"),
+        help="Folder with train.jsonl + images_s2/ (+ images_s1/). "
+        "Defaults to the attached Kaggle dataset knayamket/bigearthnet-s2-vqa.",
+    )
     parser.add_argument("--out", type=Path, default=Path("/kaggle/working/ben-lora"))
     parser.add_argument(
         "--resume-dir",
