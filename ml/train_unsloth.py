@@ -22,7 +22,7 @@ Pass `--resume-dir` if checkpoints live under `/kaggle/input/...`.
 Example (Kaggle cell)::
 
     !python train_unsloth.py \\
-        --data /kaggle/input/bigearthnet-s2-vqa \\
+        --data /kaggle/input/bigearthnet-vqa \\
         --out /kaggle/working/ben-lora \\
         --save-every-minutes 10 \\
         --resume-dir /kaggle/input/ben-lora-checkpoints
@@ -105,7 +105,7 @@ def resolve_data_root(data_root: Path) -> Path:
                 return child
     raise SystemExit(
         f"train.jsonl not found under {data_root}. "
-        "Attach the Kaggle dataset (knayamket/bigearthnet-s2-vqa) or fix --data."
+        "Attach the Kaggle dataset (knayamket/bigearthnet-vqa) or fix --data."
     )
 
 
@@ -182,9 +182,9 @@ def main() -> None:
     parser.add_argument(
         "--data",
         type=Path,
-        default=Path("/kaggle/input/bigearthnet-s2-vqa"),
+        default=Path("/kaggle/input/bigearthnet-vqa"),
         help="Folder with train.jsonl + images_s2/ (+ images_s1/). "
-        "Defaults to the attached Kaggle dataset knayamket/bigearthnet-s2-vqa.",
+        "Defaults to the attached Kaggle dataset knayamket/bigearthnet-vqa.",
     )
     parser.add_argument("--out", type=Path, default=Path("/kaggle/working/ben-lora"))
     parser.add_argument(

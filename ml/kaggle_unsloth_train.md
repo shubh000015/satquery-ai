@@ -2,11 +2,11 @@
 
 **Easiest path: upload `ml/kaggle_train_unsloth.ipynb` to Kaggle**
 (Kaggle → Create → New Notebook → File → Import Notebook), attach the dataset
-[`knayamket/bigearthnet-s2-vqa`](https://www.kaggle.com/datasets/knayamket/bigearthnet-s2-vqa),
+[`knayamket/bigearthnet-vqa`](https://www.kaggle.com/datasets/knayamket/bigearthnet-vqa),
 and Run All. The rest of this guide is the script-based equivalent.
 
-The dataset is already uploaded: **Add Input → `bigearthnet-s2-vqa`** → it
-mounts at `/kaggle/input/bigearthnet-s2-vqa`.
+The dataset is already uploaded: **Add Input → `bigearthnet-vqa`** → it
+mounts at `/kaggle/input/bigearthnet-vqa`.
 
 ## Why sessions die — and how we handle it
 
@@ -31,7 +31,7 @@ carry checkpoints over. Do **one** of these:
 2. **Settings → Accelerator → GPU T4** (or P100)
 3. **Internet → On**
 4. **Persistence → Files** (recommended)
-5. **Add Input** → `bigearthnet-s2-vqa` (by knayamket)
+5. **Add Input** → `bigearthnet-vqa` (by knayamket)
 6. Optional next sessions: also add `ben-lora-checkpoints`
 7. Add this repo’s `ml/` folder (clone or upload as a Dataset) so `train_unsloth.py` is available
 
@@ -53,14 +53,14 @@ checkpoints as a Dataset, pass `--resume-dir`.
 ```python
 # First session (or Persistence already has /kaggle/working/ben-lora):
 !python /kaggle/input/satquery-ml/train_unsloth.py \
-  --data /kaggle/input/bigearthnet-s2-vqa \
+  --data /kaggle/input/bigearthnet-vqa \
   --out /kaggle/working/ben-lora \
   --save-every-minutes 10 \
   --save-steps 50
 
 # Later session — if checkpoints were uploaded as a Dataset:
 # !python /kaggle/input/satquery-ml/train_unsloth.py \
-#   --data /kaggle/input/bigearthnet-s2-vqa \
+#   --data /kaggle/input/bigearthnet-vqa \
 #   --out /kaggle/working/ben-lora \
 #   --resume-dir /kaggle/input/ben-lora-checkpoints \
 #   --save-every-minutes 10 \
@@ -72,7 +72,7 @@ Adjust the path to `train_unsloth.py` if you cloned the GitHub repo instead:
 ```python
 !git clone -b kaggle-training https://github.com/shubh000015/satquery-ai.git /kaggle/working/satquery
 !python /kaggle/working/satquery/ml/train_unsloth.py \
-  --data /kaggle/input/bigearthnet-s2-vqa \
+  --data /kaggle/input/bigearthnet-vqa \
   --out /kaggle/working/ben-lora \
   --save-every-minutes 10
 ```
@@ -87,7 +87,7 @@ RESUMING from /kaggle/working/ben-lora/checkpoint-120
 Smoke test (short):
 
 ```python
-!python .../train_unsloth.py --data /kaggle/input/bigearthnet-s2-vqa \
+!python .../train_unsloth.py --data /kaggle/input/bigearthnet-vqa \
   --out /kaggle/working/ben-lora-smoke --max-steps 30 --max-samples 200 \
   --save-every-minutes 2 --save-steps 10
 ```
