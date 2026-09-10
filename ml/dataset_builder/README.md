@@ -150,12 +150,12 @@ kaggle datasets create -p ~/ben/ben_vqa_third --dir-mode zip
 
 `--dir-mode zip` means: **the CLI packs the folder for the upload**. You never
 create `ben_vqa_third.zip` yourself. After Kaggle processes it, a notebook sees
-the **unzipped** tree:
+the **unzipped** tree (our uploaded dataset is `knayamket/bigearthnet-vqa`):
 
 ```text
-/kaggle/input/ben-vqa-third/train.jsonl
-/kaggle/input/ben-vqa-third/images_s2/...
-/kaggle/input/ben-vqa-third/images_s1/...
+/kaggle/input/bigearthnet-vqa/train.jsonl
+/kaggle/input/bigearthnet-vqa/images_s2/...
+/kaggle/input/bigearthnet-vqa/images_s1/...
 ```
 
 To update later:

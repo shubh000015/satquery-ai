@@ -539,8 +539,8 @@ def main() -> None:
         metadata_path.write_text(
             json.dumps(
                 {
-                    "title": "SatQuery BigEarthNet VQA (S1+S2)",
-                    "id": "YOUR_KAGGLE_USERNAME/ben-vqa-third",
+                    "title": "BigEarthNet VQA",
+                    "id": "YOUR_KAGGLE_USERNAME/bigearthnet-vqa",
                     "licenses": [{"name": "CC-BY-SA-4.0"}],
                 },
                 indent=2,
