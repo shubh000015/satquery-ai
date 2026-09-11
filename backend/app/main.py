@@ -2,7 +2,7 @@ from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import assets, health, query, sessions
+from app.api.routes import assets, health, llm, query, sessions
 from app.core.config import get_settings
 from app.core.errors import AgentError
 from app.schemas.api import ErrorResponse
@@ -15,9 +15,9 @@ validates the inputs, routes the query to a task, selects specialist tools from
 the registry, runs them, and returns a grounded answer with visual evidence,
 confidence and an auditable execution trace.
 
-Fine-tuned RS models are not wired yet: specialists currently run a deterministic
-heuristic baseline and report that in `inferenceBackend`. Configure the endpoint
-settings to swap in real weights without changing the API.
+Fine-tuned RS models can be wired via SATQUERY_VLM_ENDPOINT. Until that adapter
+is trained, set SATQUERY_LLM_API_KEY and specialists will call Gemini/OpenAI
+(etc.) for the English answer while keeping the deterministic overlays.
 """
 
 
@@ -48,6 +48,7 @@ def create_app() -> FastAPI:
     api.include_router(health.router)
     api.include_router(assets.router)
     api.include_router(query.router)
+    api.include_router(llm.router)
     api.include_router(sessions.router)
     app.include_router(api)
 

@@ -8,14 +8,31 @@ from app.schemas.agent import Metric
 from app.services import analysis
 from app.tools import common
 from app.tools.base import Tool, ToolContext, ToolOutput
-from app.tools.endpoint_client import ask_vlm
+from app.tools.endpoint_client import ask_model
+
+
+def _stack_context(output: ToolOutput) -> str:
+    bits = [f"{m.label}: {m.value}" + (f" ({m.hint})" if m.hint else "") for m in output.metrics]
+    if output.observations:
+        bits.extend(output.observations[:4])
+    return "\n".join(bits)
 
 
 def _endpoint_answer(tool: Tool, ctx: ToolContext, endpoint: str, task: str) -> ToolOutput:
-    """Fine-tuned model answers; the deterministic stack still provides the
-    spatial evidence (masks, metrics, boxes) so the UI keeps its proof layer."""
-    reply = ask_vlm(endpoint, ctx.primary_scene, ctx.query, task=task)
+    """Fine-tuned model or interim LLM answers; the deterministic stack still
+    provides the spatial evidence (masks, metrics, boxes) so the UI keeps its
+    proof layer."""
     output = tool.run_baseline(ctx)
+    extra = [ctx.secondary_scene] if ctx.secondary_scene is not None else []
+    reply = ask_model(
+        endpoint,
+        ctx.primary_scene,
+        ctx.query,
+        task=task,
+        extra_scenes=extra,
+        context=_stack_context(output),
+        settings=ctx.settings,
+    )
     output.answer = reply.answer
     output.confidence = max(0.15, min(0.97, reply.confidence))
     output.observations.insert(
@@ -259,6 +276,9 @@ class GroundingTool(Tool):
     task = "grounding"
     model_key = "grounding"
     produces = ["boxes", "mask"]
+
+    def run_endpoint(self, ctx: ToolContext, endpoint: str) -> ToolOutput | None:
+        return _endpoint_answer(self, ctx, endpoint, task="grounding")
 
     def run_baseline(self, ctx: ToolContext) -> ToolOutput:
         asset = ctx.primary_asset

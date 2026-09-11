@@ -8,6 +8,7 @@ from app.schemas.agent import Box, Metric
 from app.services import analysis
 from app.tools import common
 from app.tools.base import Tool, ToolContext, ToolOutput
+from app.tools.single_image import _endpoint_answer
 
 
 def _align(*masks: np.ndarray) -> list[np.ndarray]:
@@ -42,6 +43,9 @@ class FusionTool(Tool):
     task = "cross-modal"
     model_key = "fusion"
     produces = ["mask", "metrics", "boxes"]
+
+    def run_endpoint(self, ctx: ToolContext, endpoint: str) -> ToolOutput | None:
+        return _endpoint_answer(self, ctx, endpoint, task="cross-modal")
 
     def run_baseline(self, ctx: ToolContext) -> ToolOutput:
         optical_index = ctx.optical_index()

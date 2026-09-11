@@ -163,6 +163,22 @@ Until step 3, a configured endpoint falls back to the baseline and says so in
 the trace and in `warnings` — it never silently pretends. Nothing else changes:
 same routing, same schemas, same evidence contract, same frontend.
 
+## Interim external LLM (while the adapter trains)
+
+Set a provider key so VQA / caption / change-VQA / grounding / fusion answers
+come from a hosted vision model. Masks, boxes and metrics still come from the
+deterministic stack.
+
+```
+SATQUERY_LLM_API_KEY=your-key
+SATQUERY_LLM_PROVIDER=gemini
+SATQUERY_LLM_MODEL=gemini-2.0-flash
+```
+
+`GET /api/health` then reports `llmWired: true`. `POST /api/llm/ask` is the
+same stand-in without an uploaded GeoTIFF (used by the Next.js workspace).
+When `SATQUERY_VLM_ENDPOINT` is later set, it wins over the LLM.
+
 ## Layout
 
 ```

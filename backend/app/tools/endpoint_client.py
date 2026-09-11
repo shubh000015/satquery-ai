@@ -45,6 +45,31 @@ def scene_png_b64(scene: Scene, max_edge: int = _MAX_EDGE) -> str:
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
+def ask_model(
+    endpoint: str,
+    scene: Scene,
+    question: str,
+    task: str = "vqa",
+    extra_scenes: list[Scene] | None = None,
+    context: str | None = None,
+    settings=None,
+) -> VlmReply:
+    """Local fine-tuned server, or the interim LLM when endpoint == 'llm'."""
+    if endpoint == "llm":
+        from app.core.config import get_settings
+        from app.tools.llm_client import ask_llm
+
+        scenes = [scene, *(extra_scenes or [])]
+        return ask_llm(
+            settings or get_settings(),
+            question,
+            task=task,
+            scenes=scenes,
+            context=context,
+        )
+    return ask_vlm(endpoint, scene, question, task=task)
+
+
 def ask_vlm(endpoint: str, scene: Scene, question: str, task: str = "vqa") -> VlmReply:
     """POST the scene + question to a served checkpoint. Raises on any failure;
     the Tool base class catches and falls back to the heuristic baseline."""

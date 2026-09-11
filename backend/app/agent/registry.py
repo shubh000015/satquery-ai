@@ -11,6 +11,11 @@ from __future__ import annotations
 from app.core.config import Settings, get_settings
 from app.schemas.registry import ModelSpec
 
+# Tools that can speak through the interim LLM while the LoRA adapter trains.
+_LLM_KEYS = frozenset(
+    {"controller", "vqa", "caption", "grounding", "segmentation", "change-vqa", "fusion"}
+)
+
 MODEL_SPECS: tuple[ModelSpec, ...] = (
     ModelSpec(
         key="controller",
@@ -107,14 +112,27 @@ MODEL_SPECS: tuple[ModelSpec, ...] = (
 _BY_KEY = {spec.key: spec for spec in MODEL_SPECS}
 
 
+def llm_enabled(settings: Settings | None = None) -> bool:
+    settings = settings or get_settings()
+    return bool((settings.llm_api_key or "").strip())
+
+
 def endpoint_for(key: str, settings: Settings | None = None) -> str | None:
-    """Configured inference endpoint for a registry row, if any."""
+    """Configured inference endpoint for a registry row, if any.
+
+    A dedicated SATQUERY_*_ENDPOINT wins. Otherwise a configured
+    SATQUERY_LLM_API_KEY stands in for the language/vision rows.
+    """
     settings = settings or get_settings()
     spec = _BY_KEY.get(key)
     if spec is None or not spec.endpoint_setting:
         return None
     value = getattr(settings, spec.endpoint_setting, None)
-    return value or None
+    if value:
+        return value
+    if llm_enabled(settings) and key in _LLM_KEYS:
+        return "llm"
+    return None
 
 
 def model_specs(settings: Settings | None = None) -> list[ModelSpec]:
@@ -136,8 +154,14 @@ def spec(key: str) -> ModelSpec:
 def display_name(key: str, settings: Settings | None = None) -> str:
     """What to show in the models panel: the real model once wired, the
     heuristic stand-in until then."""
+    settings = settings or get_settings()
     resolved = _BY_KEY[key]
-    if endpoint_for(key, settings):
+    endpoint = endpoint_for(key, settings)
+    if endpoint == "llm":
+        provider = (settings.llm_provider or "gemini").strip()
+        model = settings.llm_model or provider
+        return f"{model} (interim LLM)"
+    if endpoint:
         return resolved.primary_model
     if key == "mensuration":
         return resolved.primary_model

@@ -8,6 +8,7 @@ from app.schemas.agent import Metric
 from app.services import analysis
 from app.tools import common
 from app.tools.base import Tool, ToolContext, ToolOutput
+from app.tools.single_image import _endpoint_answer
 
 _CHANGE_TARGET_DEFAULT = "builtup"
 _SIGNIFICANT_POINTS = 1.0  # percentage points of frame coverage
@@ -98,6 +99,9 @@ class ChangeVqaTool(Tool):
     task = "change-vqa"
     model_key = "change-vqa"
     produces = ["answer", "metrics", "mask"]
+
+    def run_endpoint(self, ctx: ToolContext, endpoint: str) -> ToolOutput | None:
+        return _endpoint_answer(self, ctx, endpoint, task="change-vqa")
 
     def run_baseline(self, ctx: ToolContext) -> ToolOutput:
         before_asset, after_asset, before_scene, after_scene = _pair(ctx)

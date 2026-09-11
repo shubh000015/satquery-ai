@@ -20,6 +20,7 @@ def health() -> HealthResponse:
         problem_statement=settings.problem_statement,
         rasterio=RASTERIO_AVAILABLE,
         weights_wired=registry.weights_wired(settings),
+        llm_wired=registry.llm_enabled(settings),
     )
 
 

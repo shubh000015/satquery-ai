@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     change_endpoint: str | None = None
     fusion_endpoint: str | None = None
 
+    # Interim external LLM (Gemini / OpenAI / Groq / OpenRouter) while QLoRA trains.
+    # When llm_api_key is set and a dedicated *_endpoint is not, language tools
+    # call this API for the answer and keep the heuristic masks/boxes.
+    llm_api_key: str | None = None
+    llm_provider: str = "gemini"
+    llm_model: str | None = None
+    llm_base_url: str | None = None
+
     @property
     def asset_dir(self) -> Path:
         return self.data_dir / "assets"

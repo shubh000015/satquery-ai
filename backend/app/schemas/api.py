@@ -12,6 +12,21 @@ class HealthResponse(CamelModel):
     problem_statement: str
     rasterio: bool
     weights_wired: int
+    llm_wired: bool = False
+
+
+class LlmAskRequest(CamelModel):
+    query: str
+    task: str = "vqa"
+    image_b64: str | None = None
+    context: str | None = None
+
+
+class LlmAskResponse(CamelModel):
+    answer: str
+    model: str
+    provider: str
+    confidence: float
 
 
 class UploadResponse(CamelModel):
