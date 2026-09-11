@@ -36,9 +36,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import shutil
 import time
 from pathlib import Path
+
+# Full BigEarthNet VQA jsonl is ~1 GB / millions of rows. Loading it as Python
+# dicts OOMs Kaggle CPU RAM (~13 GB). Cap keeps one session inside a T4 quota.
+DEFAULT_MAX_SAMPLES = 12_000
 
 from transformers import TrainerCallback
 
@@ -109,48 +114,85 @@ def resolve_data_root(data_root: Path) -> Path:
     )
 
 
-def load_dataset(data_root: Path, max_samples: int | None):
+def index_jsonl_offsets(path: Path) -> list[int]:
+    """Byte offsets of non-empty lines. Does not parse JSON (cheap on a 1 GB file)."""
+    size_gb = path.stat().st_size / 1e9
+    print(f"indexing {path} ({size_gb:.2f} GB) — not loading it into RAM ...", flush=True)
+    offsets: list[int] = []
+    with path.open("rb") as fh:
+        pos = 0
+        for raw in fh:
+            if raw.strip():
+                offsets.append(pos)
+            pos += len(raw)
+            if len(offsets) and len(offsets) % 1_000_000 == 0:
+                print(f"  indexed {len(offsets):,} rows", flush=True)
+    print(f"indexed {len(offsets):,} jsonl rows", flush=True)
+    return offsets
+
+
+def _row_to_example(row: dict, data_root: Path) -> dict:
+    return {
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": SYSTEM + "\n\n" + row["question"]},
+                    {"type": "image", "image": str(data_root / row["image"])},
+                ],
+            },
+            {
+                "role": "assistant",
+                "content": [{"type": "text", "text": row["answer"]}],
+            },
+        ]
+    }
+
+
+def load_dataset(data_root: Path, max_samples: int | None, seed: int = 13):
+    """Parse only `max_samples` random rows (default 12k). Never json.loads the full file."""
     data_root = resolve_data_root(data_root)
     train_jsonl = data_root / "train.jsonl"
+    offsets = index_jsonl_offsets(train_jsonl)
+    total = len(offsets)
+    if not total:
+        raise SystemExit(f"{train_jsonl} is empty")
 
-    rows = []
-    with train_jsonl.open(encoding="utf-8") as fh:
-        for line in fh:
-            if not line.strip():
+    if max_samples is None:
+        if total > 50_000:
+            raise SystemExit(
+                f"{train_jsonl} has {total:,} rows (~1 GB). Loading them all as Python "
+                f"objects will OOM Kaggle CPU RAM. Re-run without --full "
+                f"(default cap is {DEFAULT_MAX_SAMPLES} random samples)."
+            )
+        print(f"using all {total:,} rows", flush=True)
+    elif total > max_samples:
+        rng = random.Random(seed)
+        offsets = rng.sample(offsets, max_samples)
+        print(f"sampling {len(offsets):,} / {total:,} rows (seed={seed})", flush=True)
+    else:
+        print(f"using all {total:,} rows", flush=True)
+
+    dataset: list[dict] = []
+    skipped = 0
+    with train_jsonl.open("rb") as fh:
+        for pos in offsets:
+            fh.seek(pos)
+            try:
+                row = json.loads(fh.readline())
+            except json.JSONDecodeError:
+                skipped += 1
                 continue
-            rows.append(json.loads(line))
-            if max_samples and len(rows) >= max_samples:
-                break
+            if "image" not in row or "question" not in row or "answer" not in row:
+                skipped += 1
+                continue
+            dataset.append(_row_to_example(row, data_root))
 
-    dataset = []
-    missing = 0
-    for row in rows:
-        img = data_root / row["image"]
-        if not img.exists():
-            missing += 1
-            continue
-        dataset.append(
-            {
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": SYSTEM + "\n\n" + row["question"]},
-                            {"type": "image", "image": str(img)},
-                        ],
-                    },
-                    {
-                        "role": "assistant",
-                        "content": [{"type": "text", "text": row["answer"]}],
-                    },
-                ]
-            }
-        )
-    if missing:
-        print(f"warning: skipped {missing} rows with missing images")
+    if skipped:
+        print(f"warning: skipped {skipped} unreadable rows")
     if not dataset:
         raise SystemExit("No usable training samples")
-    print(f"usable samples: {len(dataset)}")
+    print(f"usable samples: {len(dataset)}", flush=True)
     return dataset
 
 
@@ -196,7 +238,18 @@ def main() -> None:
     parser.add_argument("--model", default="unsloth/Qwen2.5-VL-3B-Instruct-bnb-4bit")
     parser.add_argument("--epochs", type=float, default=1.0)
     parser.add_argument("--max-steps", type=int, default=None, help="Optional cap (smoke tests)")
-    parser.add_argument("--max-samples", type=int, default=None)
+    parser.add_argument(
+        "--max-samples",
+        type=int,
+        default=DEFAULT_MAX_SAMPLES,
+        help=f"Random subset of train.jsonl (default {DEFAULT_MAX_SAMPLES}). "
+        "Do NOT load the full ~1 GB file on Kaggle.",
+    )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Train on every jsonl row. Will OOM on Kaggle CPU RAM — laptop/A100 only.",
+    )
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--grad-accum", type=int, default=8)
@@ -215,7 +268,8 @@ def main() -> None:
     from unsloth.trainer import UnslothVisionDataCollator
     from trl import SFTConfig, SFTTrainer
 
-    dataset = load_dataset(args.data, args.max_samples)
+    cap = None if args.full else args.max_samples
+    dataset = load_dataset(args.data, cap, seed=args.seed)
     args.out.mkdir(parents=True, exist_ok=True)
 
     if not args.no_resume:

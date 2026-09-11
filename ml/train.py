@@ -92,10 +92,23 @@ SYSTEM_PROMPT = (
 
 
 class JsonlVqaDataset(Dataset):
-    def __init__(self, path: Path, max_samples: int | None = None, seed: int = 13):
-        rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-        random.Random(seed).shuffle(rows)
-        self.rows = rows[:max_samples] if max_samples else rows
+    def __init__(self, path: Path, max_samples: int | None = 12_000, seed: int = 13):
+        # Do not path.read_text() a ~1 GB jsonl — that OOMs Kaggle CPU RAM.
+        offsets: list[int] = []
+        with path.open("rb") as fh:
+            pos = 0
+            for raw in fh:
+                if raw.strip():
+                    offsets.append(pos)
+                pos += len(raw)
+        if max_samples and len(offsets) > max_samples:
+            offsets = random.Random(seed).sample(offsets, max_samples)
+        rows = []
+        with path.open("rb") as fh:
+            for pos in offsets:
+                fh.seek(pos)
+                rows.append(json.loads(fh.readline()))
+        self.rows = rows
 
     def __len__(self) -> int:
         return len(self.rows)

@@ -8,6 +8,11 @@ and Run All. The rest of this guide is the script-based equivalent.
 The dataset is already uploaded: **Add Input → `bigearthnet-vqa`** → it
 mounts at `/kaggle/input/bigearthnet-vqa`.
 
+`train.jsonl` is ~1 GB. The notebook/script **does not load it all** — it
+indexes byte offsets, then trains on **12,000 random rows** (enough for one
+T4 session). Pass `--max-samples 20000` only after a run finishes cleanly.
+`--full` is refused when the file has more than 50k rows.
+
 ## Why sessions die — and how we handle it
 
 Kaggle GPU notebooks shut down after ~9–12 hours (or sooner if idle).
@@ -55,6 +60,7 @@ checkpoints as a Dataset, pass `--resume-dir`.
 !python /kaggle/input/satquery-ml/train_unsloth.py \
   --data /kaggle/input/bigearthnet-vqa \
   --out /kaggle/working/ben-lora \
+  --max-samples 12000 \
   --save-every-minutes 10 \
   --save-steps 50
 
@@ -74,6 +80,7 @@ Adjust the path to `train_unsloth.py` if you cloned the GitHub repo instead:
 !python /kaggle/working/satquery/ml/train_unsloth.py \
   --data /kaggle/input/bigearthnet-vqa \
   --out /kaggle/working/ben-lora \
+  --max-samples 12000 \
   --save-every-minutes 10
 ```
 

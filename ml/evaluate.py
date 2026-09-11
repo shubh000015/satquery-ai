@@ -86,9 +86,20 @@ def main() -> None:
         print(f"loaded adapter: {args.adapter}")
     model.eval()
 
-    rows = [json.loads(l) for l in args.data.read_text(encoding="utf-8").splitlines() if l.strip()]
-    random.Random(args.seed).shuffle(rows)
-    rows = rows[: args.limit]
+    rows: list[dict] = []
+    offsets: list[int] = []
+    with args.data.open("rb") as fh:
+        pos = 0
+        for raw in fh:
+            if raw.strip():
+                offsets.append(pos)
+            pos += len(raw)
+    if args.limit and len(offsets) > args.limit:
+        offsets = random.Random(args.seed).sample(offsets, args.limit)
+    with args.data.open("rb") as fh:
+        for pos in offsets:
+            fh.seek(pos)
+            rows.append(json.loads(fh.readline()))
 
     correct = 0
     per_category: dict[str, list[bool]] = defaultdict(list)
