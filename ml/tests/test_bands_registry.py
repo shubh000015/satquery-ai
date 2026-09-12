@@ -233,6 +233,30 @@ def test_subset_keeps_names_aligned():
     assert np.array_equal(subset.array[:, :, 0], stack.array[:, :, stack.names.index("B04")])
 
 
+def test_for_croma_fills_b01_and_b09_from_a_bigearthnet_stack():
+    stack = _stack(BEN_ALL_BANDS)
+    ready, synthesized = stack.for_croma()
+    assert synthesized == ("B01", "B09")
+    assert ready.has("B01", "B09", "VV", "B08")
+    assert np.array_equal(
+        ready.array[:, :, ready.names.index("B01")],
+        stack.array[:, :, stack.names.index("B02")],
+    )
+    assert np.array_equal(
+        ready.array[:, :, ready.names.index("B09")],
+        stack.array[:, :, stack.names.index("B8A")],
+    )
+
+
+def test_for_croma_refuses_an_rgb_stack():
+    try:
+        _stack(RGB_BANDS).for_croma()
+    except MissingBands as exc:
+        assert "VV" in exc.missing
+    else:
+        raise AssertionError("RGB cannot satisfy CROMA even with atmospheric fill")
+
+
 def test_resize_preserves_channel_count():
     array = np.random.default_rng(3).random((12, 30, 30)).astype(np.float32)
     resized = resize_chw(array, 120)

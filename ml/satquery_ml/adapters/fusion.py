@@ -24,7 +24,7 @@ from __future__ import annotations
 import numpy as np
 
 from .. import labels as label_vocab
-from ..bands import CROMA_OPTICAL_BANDS, CROMA_SAR_BANDS, BandStack, resize_chw
+from ..bands import CROMA_OPTICAL_BANDS, CROMA_SAR_BANDS, BandStack, MissingBands, resize_chw
 from ..facts import Evidence, clamp_confidence
 from .base import Adapter, AdapterUnavailable, batch_tensor, place_module
 
@@ -44,24 +44,20 @@ class FusionAdapter(Adapter):
             croma_base(weights=CROMABase_Weights.CROMA_VIT).eval(), self.device
         )
 
-    def embeddings(self, stack: BandStack) -> dict[str, np.ndarray]:
-        """Optical, SAR and joint embeddings for a co-registered pair."""
+    def embeddings(self, stack: BandStack) -> tuple[dict[str, np.ndarray], tuple[str, ...]]:
+        """Optical, SAR and joint embeddings, plus any synthesized band names."""
         self.ensure_loaded()
 
         import torch
 
-        missing_sar = stack.missing(CROMA_SAR_BANDS)
-        missing_optical = stack.missing(CROMA_OPTICAL_BANDS)
-        if missing_sar or missing_optical:
-            raise AdapterUnavailable(
-                self.spec.name,
-                "needs 2 SAR channels and 12 Sentinel-2 optical bands; missing "
-                f"{list(missing_sar) + list(missing_optical)}",
-            )
+        try:
+            ready, synthesized = stack.for_croma()
+        except MissingBands as exc:
+            raise AdapterUnavailable(self.spec.name, str(exc)) from exc
 
         size = self.spec.input_size
-        sar = resize_chw(stack.select(CROMA_SAR_BANDS, self.spec.name), size)
-        optical = resize_chw(stack.select(CROMA_OPTICAL_BANDS, self.spec.name), size)
+        sar = resize_chw(ready.select(CROMA_SAR_BANDS, self.spec.name), size)
+        optical = resize_chw(ready.select(CROMA_OPTICAL_BANDS, self.spec.name), size)
 
         sar_tensor = batch_tensor(sar, self.device, self.model)
         optical_tensor = batch_tensor(optical, self.device, self.model)
@@ -69,18 +65,21 @@ class FusionAdapter(Adapter):
         with torch.inference_mode():
             output = self.model(x_sar=sar_tensor, x_optical=optical_tensor)
 
-        return {
+        vectors = {
             name: _vector(value)
             for name, value in _named_outputs(output).items()
         }
+        return vectors, synthesized
 
     def agreement(self, stack: BandStack) -> dict:
         """How much the two sensors say the same thing, as a measured number."""
-        vectors = self.embeddings(stack)
+        vectors, synthesized = self.embeddings(stack)
         optical = vectors.get("optical")
         sar = vectors.get("sar")
 
         result: dict = {"available": list(vectors)}
+        if synthesized:
+            result["synthesizedBands"] = list(synthesized)
         if optical is not None and sar is not None:
             result["cosineSimilarity"] = round(_cosine(optical, sar), 4)
         joint = vectors.get("joint")

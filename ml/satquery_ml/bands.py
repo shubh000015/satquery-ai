@@ -43,6 +43,14 @@ BEN_ALL_BANDS: tuple[str, ...] = BEN_S1_BANDS + BEN_S2_BANDS
 CROMA_SAR_BANDS: tuple[str, ...] = SAR_BANDS
 CROMA_OPTICAL_BANDS: tuple[str, ...] = S2_BANDS
 
+# 60 m atmospheric bands CROMA wants but BigEarthNet (and our smoke stack)
+# do not store. Fill from the nearest surface band rather than refusing the
+# whole encoder — B01/B09 carry almost no spatial structure at 10 m.
+ATMOSPHERIC_FILL: dict[str, str] = {
+    "B01": "B02",  # coastal aerosol -> blue
+    "B09": "B8A",  # water vapour -> narrow NIR
+}
+
 
 class MissingBands(ValueError):
     """Raised when a scene lacks bands a model requires."""
@@ -140,6 +148,29 @@ class BandStack:
             stack = np.stack([gray, gray, gray], axis=2)
 
         return (np.clip(_stretch(stack), 0.0, 1.0) * 255.0).astype(np.uint8)
+
+    def for_croma(self) -> tuple["BandStack", tuple[str, ...]]:
+        """A stack CROMA can consume, plus the names that were synthesized.
+
+        CROMA's 12 optical channels include B01 and B09. BigEarthNet's published
+        10-band set does not. Those two are 60 m atmospheric bands, so copying
+        B02 and B8A is an honest stand-in. Any other missing band still refuses.
+        """
+        needed = CROMA_SAR_BANDS + CROMA_OPTICAL_BANDS
+        missing = self.missing(needed)
+        unsynth = tuple(name for name in missing if name not in ATMOSPHERIC_FILL)
+        if unsynth:
+            raise MissingBands("CROMA-base", unsynth, self.names)
+
+        planes = {name: self.array[:, :, i] for i, name in enumerate(self.names)}
+        synthesized: list[str] = []
+        for name in missing:
+            source = ATMOSPHERIC_FILL[name]
+            if source not in planes:
+                raise MissingBands("CROMA-base", (name, source), self.names)
+            planes[name] = planes[source]
+            synthesized.append(name)
+        return BandStack.from_planes(planes), tuple(synthesized)
 
     def subset(self, names: tuple[str, ...]) -> BandStack:
         selected = self.select(names)
