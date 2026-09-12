@@ -29,7 +29,7 @@ export function ChatThread() {
               <button
                 key={q}
                 type="button"
-                onClick={() => s.submit(q)}
+                onClick={() => s.setQuery(q)}
                 className="rounded-2xl border border-white/10 bg-white/4 px-4 py-3 text-left text-[13px] leading-relaxed text-white/80 hover:border-[#00b4ff]/50 hover:text-white"
               >
                 {q}

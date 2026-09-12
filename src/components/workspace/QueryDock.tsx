@@ -62,7 +62,7 @@ export function QueryDock() {
           <button
             key={q}
             type="button"
-            onClick={() => s.submit(q)}
+            onClick={() => s.setQuery(q)}
             className="max-w-full truncate rounded-full px-2.5 py-1 text-left text-[11px] text-mute ring-1 ring-white/10 hover:text-ink hover:ring-white/25"
           >
             {q}

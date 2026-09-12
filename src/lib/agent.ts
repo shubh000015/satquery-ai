@@ -114,14 +114,14 @@ export function matchDemoMission(query: string): string | null {
   return q.length >= 8 ? "doaba" : null;
 }
 
-/** Hardcoded reply when the user is chatting with no scene loaded. */
+/** Reply when the user is chatting with no scene loaded. */
 export function demoChatReply(query: string): string {
   const q = query.toLowerCase().trim();
   if (GREETING.test(q) && q.length < 24) {
-    return "SatQuery AI here. Ask a question about a satellite scene — flood extent, built-up change, ships in a harbour, land-cover — and I will load a demo and run the agent pipeline. You can also attach a GeoTIFF.";
+    return "SatQuery AI here. Upload a GeoTIFF, PNG, or JPEG scene, then ask in English — flood extent, built-up change, ships, land-cover. The agent backend routes the question to the specialist models.";
   }
   if (q.includes("what can you") || q.includes("what do you do") || q === "help") {
-    return "I read one or two satellite images and answer in English. I pick the specialist (VQA, grounding, change, optical–SAR fusion), show evidence on the scene, and leave an audit trail. Try a demo query below, or upload your own GeoTIFF.";
+    return "I read one or two satellite images and answer in English. I pick the specialist (VQA, grounding, change, optical–SAR fusion), show evidence on the scene, and leave an audit trail. Attach a scene to start.";
   }
-  return `I can work that question (“${query.slice(0, 140)}”) once I have imagery. Upload a GeoTIFF, or tap a demo query below and I will load a real scene and run the full agent — validator, router, specialists, evidence.`;
+  return `I can work that question (“${query.slice(0, 140)}”) once I have imagery. Upload a GeoTIFF (or a benchmark PNG/JPEG) and ask again — the backend will run the real pipeline.`;
 }

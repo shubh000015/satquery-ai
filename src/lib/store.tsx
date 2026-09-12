@@ -88,6 +88,19 @@ type Store = {
 
 const Ctx = createContext<Store | null>(null);
 
+async function filesFromMission(mission: Mission): Promise<File[]> {
+  const files: File[] = [];
+  for (const asset of mission.assets) {
+    if (!asset.src || asset.src.startsWith("blob:")) continue;
+    const response = await fetch(asset.src);
+    if (!response.ok) throw new Error(`Could not load ${asset.name || asset.src}`);
+    const blob = await response.blob();
+    const name = asset.src.split("/").pop() || `${asset.id}.jpg`;
+    files.push(new File([blob], name, { type: blob.type || "image/jpeg" }));
+  }
+  return files;
+}
+
 export function SatQueryProvider({ children }: { children: ReactNode }) {
   const [screen, setScreen] = useState<Screen>("ingress");
   const [mission, setMission] = useState<Mission | null>(null);
@@ -155,7 +168,7 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
     const m = missions.find((x) => x.id === id);
     if (!m) return;
     const asked = opts?.query?.trim();
-    pendingAsk.current = asked || (opts?.autorun ? m.suggested[0] : null);
+    pendingAsk.current = asked || null;
     bootMission(m);
   }, [bootMission]);
 
@@ -242,9 +255,7 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
       if (combined.length === 2) {
         m.mode = "cross-modal";
       }
-      
-      pendingAsk.current = m.suggested[0];
-      
+
       if (isCustom) {
         setMission(m);
         setCompare("split");
@@ -289,7 +300,6 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
     setPairChoice(false);
     setPendingFiles(null);
     remote.current = null; // the declared pair mode is a hint the backend needs
-    pendingAsk.current = m.suggested[0];
     bootMission(m);
   }, [pendingFiles, bootMission]);
 
@@ -400,10 +410,18 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       if (runId.current !== id) return;
       const detail = err instanceof ApiError ? err.message : "Agent backend unreachable.";
-      flashError(`${detail} Falling back to the local agent.`);
-      localRun(q, m, id);
+      flashError(detail);
+      setRunning(false);
+      setThread((t) => [
+        ...t,
+        {
+          id: `a-${id}`,
+          role: "instrument",
+          text: `${detail} The FastAPI server and the Kaggle tunnel both need to be up.`,
+        },
+      ]);
     }
-  }, [flashError, localRun]);
+  }, [flashError]);
 
   const rememberSession = useCallback((q: string) => {
     let currentSessionId = activeSessionId;
@@ -433,40 +451,60 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
     setResult(null);
     setThread((t) => [...t, { id: `u-${id}`, role: "user", text: q }]);
 
-    if (backendEnabled() && m.id === "upload" && uploadedFiles.current.length > 0) {
+    if (backendEnabled()) {
       setSteps([]);
-      void remoteRun(q, m, id);
-    } else {
-      localRun(q, m, id);
+      void (async () => {
+        try {
+          if (uploadedFiles.current.length === 0 && m.assets.length > 0) {
+            uploadedFiles.current = await filesFromMission(m);
+            remote.current = null;
+          }
+          if (uploadedFiles.current.length === 0) {
+            flashError("Upload a satellite scene first.");
+            setRunning(false);
+            return;
+          }
+          await remoteRun(q, m, id);
+        } catch (err) {
+          if (runId.current !== id) return;
+          const detail = err instanceof Error ? err.message : "Could not send the scene to the backend.";
+          flashError(detail);
+          setRunning(false);
+        }
+      })();
+      return;
     }
-  }, [localRun, remoteRun, rememberSession]);
+    localRun(q, m, id);
+  }, [flashError, localRun, remoteRun, rememberSession]);
 
   const submit = useCallback((text?: string) => {
     if (running) return;
     const q = (text ?? query).trim();
     if (!q) return;
 
-    // No scene loaded: route onto a demo mission, or answer in chat so Ask
-    // is never a no-op.
+    // No scene loaded: do not map the question onto a canned demo. Ask for
+    // an upload so the backend can analyse a real file.
     if (!mission) {
-      const demo = missions.find((m) => m.id === matchDemoMission(q));
-      if (demo) {
-        setMission(demo);
-        setResult(null);
-        setSteps([]);
-        setSelectedId(null);
-        setReportOpen(false);
-        setMeasuring(false);
-        setMeasurePts([]);
-        setScale(1);
-        setPan({ x: 0, y: 0 });
-        setSwipe(52);
-        setCompare(demo.mode === "single" ? "primary" : "split");
-        setAcquiring(false);
-        setReportHref(null);
-        setScreen("workspace");
-        beginRun(q, demo);
-        return;
+      if (!backendEnabled()) {
+        const demo = missions.find((m) => m.id === matchDemoMission(q));
+        if (demo) {
+          setMission(demo);
+          setResult(null);
+          setSteps([]);
+          setSelectedId(null);
+          setReportOpen(false);
+          setMeasuring(false);
+          setMeasurePts([]);
+          setScale(1);
+          setPan({ x: 0, y: 0 });
+          setSwipe(52);
+          setCompare(demo.mode === "single" ? "primary" : "split");
+          setAcquiring(false);
+          setReportHref(null);
+          setScreen("workspace");
+          beginRun(q, demo);
+          return;
+        }
       }
 
       rememberSession(q);
@@ -501,11 +539,9 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
     if (autoRan.current) return;
     const params = new URLSearchParams(window.location.search);
     const raw = params.get("q");
-    const auto = params.has("autorun");
-    if (!raw && !auto) return;
+    if (!raw) return;
     autoRan.current = true;
-    const text = raw || mission.suggested[0];
-    window.setTimeout(() => submit(text), 240);
+    window.setTimeout(() => submit(raw), 240);
   }, [mission, acquiring, running, submit]);
 
   const toggleLayer = useCallback((id: LayerId) => {

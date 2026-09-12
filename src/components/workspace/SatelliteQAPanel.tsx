@@ -60,7 +60,7 @@ export function SatelliteQAPanel({ isMobile, isFullWidth }: { isMobile?: boolean
                 <MessageSquare size={32} className="mb-3 opacity-20" />
                 <p className="text-[13px] text-sat-heading">Ask in plain English.</p>
                 <p className="mt-1 text-[12px] opacity-70">
-                  I will load a demo scene if you have not uploaded imagery yet.
+                  Upload a scene first. The backend will route your question to the specialist models.
                 </p>
               </div>
               <div className="mt-6 flex flex-col gap-2">
@@ -68,7 +68,7 @@ export function SatelliteQAPanel({ isMobile, isFullWidth }: { isMobile?: boolean
                   <button
                     key={q}
                     type="button"
-                    onClick={() => send(q)}
+                    onClick={() => s.setQuery(q)}
                     className="rounded-lg border border-sat-hairline bg-sat-box px-3 py-2.5 text-left text-[13px] leading-relaxed text-sat-msg-text transition-colors hover:bg-sat-hairline"
                   >
                     {q}
@@ -189,7 +189,7 @@ export function SatelliteQAPanel({ isMobile, isFullWidth }: { isMobile?: boolean
                         key={q}
                         type="button"
                         disabled={s.running}
-                        onClick={() => send(q)}
+                        onClick={() => s.setQuery(q)}
                         className="flex w-full items-center justify-between rounded-lg bg-[#1c1c1c] px-3 py-2 text-left transition-colors hover:bg-sat-hairline disabled:opacity-40"
                       >
                         <span className="text-[13px] text-sat-msg-text">{q}</span>
