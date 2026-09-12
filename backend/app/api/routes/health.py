@@ -6,13 +6,26 @@ from app.schemas.api import HealthResponse
 from app.schemas.registry import RegistryResponse
 from app.services.raster import RASTERIO_AVAILABLE
 from app.tools import tool_specs
+from app.tools.endpoint_client import probe_ml
 
 router = APIRouter(tags=["meta"])
+
+
+def _configured_ml(settings) -> str | None:
+    return (
+        settings.ml_endpoint
+        or settings.vlm_endpoint
+        or settings.grounding_endpoint
+        or settings.change_endpoint
+        or settings.fusion_endpoint
+    )
 
 
 @router.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     settings = get_settings()
+    ml = _configured_ml(settings)
+    reachable = None if not ml else probe_ml(ml) is not None
     return HealthResponse(
         status="ok",
         app=settings.app_name,
@@ -20,6 +33,8 @@ def health() -> HealthResponse:
         problem_statement=settings.problem_statement,
         rasterio=RASTERIO_AVAILABLE,
         weights_wired=registry.weights_wired(settings),
+        ml_endpoint=ml,
+        ml_reachable=reachable,
     )
 
 

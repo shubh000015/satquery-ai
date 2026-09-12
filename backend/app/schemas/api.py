@@ -12,6 +12,8 @@ class HealthResponse(CamelModel):
     problem_statement: str
     rasterio: bool
     weights_wired: int
+    ml_endpoint: str | None = None
+    ml_reachable: bool | None = None
 
 
 class UploadResponse(CamelModel):

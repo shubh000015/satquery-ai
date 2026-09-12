@@ -21,7 +21,8 @@ class _StubVlmHandler(BaseHTTPRequestHandler):
     def do_POST(self):  # noqa: N802 (http.server API)
         length = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(length))
-        assert body.get("imageB64"), "backend must send the scene image"
+        assert body.get("imageB64") or body.get("bands"), "backend must send the scene"
+        assert self.headers.get("User-Agent", "").startswith("SatQuery-AI")
         payload = json.dumps(
             {"answer": STUB_ANSWER, "confidence": 0.91, "model": "RS-LoRA-stub"}
         ).encode("utf-8")
@@ -53,7 +54,6 @@ def stub_vlm_endpoint(monkeypatch):
     yield endpoint
 
     server.shutdown()
-    monkeypatch.delenv("SATQUERY_VLM_ENDPOINT", raising=False)
     get_settings.cache_clear()
     controller_module._controller = None
 

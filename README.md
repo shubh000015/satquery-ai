@@ -11,7 +11,7 @@ Non-experts ask a satellite scene a question in English. An agentic controller c
 - Co-registered optical + SAR — fusion (e.g. flood through cloud)
 - Bi-temporal pair — change description / change VQA
 
-**Demo scenes (UI, mock agent — models not wired yet)**
+**Demo scenes (scripted mock agent — always local)**
 | Scene | Proves |
 | --- | --- |
 | Kosi Fan, Bihar | Optical × SAR flood VQA + settlement grounding |
@@ -42,19 +42,16 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-Then add to `.env.local` in the repo root and restart `npm run dev`:
+`.env.development` already points the workspace at `http://localhost:8000`.
+Restart `npm run dev` after the backend is up.
 
-```bash
-NEXT_PUBLIC_SATQUERY_API=http://localhost:8000
-```
+Uploaded scenes are analysed server-side and the audit panel streams the real
+trace. The four scripted demo missions stay on the local mock.
 
-Uploaded scenes are now analysed server-side and the audit panel streams the
-real trace. Leave the variable unset and the UI runs entirely on its local mock
-agent — the four scripted demo missions always do.
-
-Fine-tuned RS models are not wired yet: the specialists run a documented
-heuristic baseline and every response reports that in `inferenceBackend`. See
-the backend README for how to plug a checkpoint into a tool.
+Specialists call the Kaggle-hosted RS models when `SATQUERY_ML_ENDPOINT` is set
+in `backend/.env` (the cloudflared URL from
+`ml/notebooks/kaggle_serve_models.ipynb`). If that tunnel is down they fall
+back to the heuristic baseline and say so in `inferenceBackend`.
 
 ## Stack
 
@@ -62,4 +59,6 @@ Next.js 16 (App Router) · TypeScript · Tailwind v4 · Framer Motion · Three.j
 
 FastAPI · NumPy · Pillow · rasterio (optional) for the agent backend.
 
-RS-adapted VLM weights (BigEarthNet, VRSBench, RSVQA, CDVQA) — to be integrated.
+RS specialists (BigEarthNet ResNet-50, RSCoVLM-7B, Grounding DINO, SAM 2.1,
+ChangeFormerV6, CROMA) are served from `ml/serve.py` and reached through
+`SATQUERY_ML_ENDPOINT`. See [`ml/README.md`](ml/README.md).

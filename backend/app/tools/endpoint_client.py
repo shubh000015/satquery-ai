@@ -18,7 +18,8 @@ from PIL import Image
 
 from app.services.raster import Scene
 
-_TIMEOUT_S = 90  # first request may compile CUDA kernels; be generous
+_TIMEOUT_S = 180  # first Kaggle request may compile CUDA kernels
+_USER_AGENT = "SatQuery-AI/0.1 (specialist-client)"
 _MAX_EDGE = 896  # plenty for a VLM, keeps the payload small
 _BAND_EDGE = 384  # band stacks are float32 per channel, so keep them smaller
 
@@ -124,15 +125,39 @@ def decode_rle(runs: list[int], height: int, width: int) -> np.ndarray:
     return flat.reshape(height, width)
 
 
+def _headers(extra: dict[str, str] | None = None) -> dict[str, str]:
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": _USER_AGENT,
+    }
+    if extra:
+        headers.update(extra)
+    return headers
+
+
 def _post(endpoint: str, path: str, payload: dict) -> dict:
     request = urllib.request.Request(
         f"{endpoint.rstrip('/')}{path}",
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers=_headers({"Content-Type": "application/json"}),
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=_TIMEOUT_S) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def probe_ml(endpoint: str, timeout: float = 4.0) -> dict | None:
+    """Cheap GET /health against the specialist server. None if it is down."""
+    request = urllib.request.Request(
+        f"{endpoint.rstrip('/')}/health",
+        headers=_headers(),
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return None
 
 
 def _reply(body: dict, *keep: str) -> EndpointReply:
@@ -172,6 +197,7 @@ def ask_vqa_with_bands(
     Falls back to the RGB path when the server rejects the bands, which happens
     when the upload simply does not carry the bands the classifier needs.
     """
+    png = scene_png_b64(scene)
     try:
         body = _post(
             endpoint,
@@ -180,15 +206,16 @@ def ask_vqa_with_bands(
                 "question": question,
                 "task": task,
                 "bands": scene_bands(scene, modality),
+                "imageB64": png,
             },
         )
     except urllib.error.HTTPError as exc:
-        if exc.code != 503:
+        if exc.code not in (400, 422, 503):
             raise
         body = _post(
             endpoint,
             "/v1/vqa",
-            {"question": question, "task": task, "imageB64": scene_png_b64(scene)},
+            {"question": question, "task": task, "imageB64": png},
         )
     return _reply(body)
 

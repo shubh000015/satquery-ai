@@ -26,6 +26,16 @@ def _isolated_data_dir(tmp_path_factory: pytest.TempPathFactory) -> None:
     data_dir = tmp_path_factory.mktemp("satquery-data")
     os.environ["SATQUERY_DATA_DIR"] = str(data_dir)
     os.environ["SATQUERY_STRICT_FORMAT_POLICY"] = "false"
+    # Neutralize the committed Kaggle URL so API tests stay on the baseline
+    # and never wait on a live tunnel.
+    for key in (
+        "SATQUERY_ML_ENDPOINT",
+        "SATQUERY_VLM_ENDPOINT",
+        "SATQUERY_GROUNDING_ENDPOINT",
+        "SATQUERY_CHANGE_ENDPOINT",
+        "SATQUERY_FUSION_ENDPOINT",
+    ):
+        os.environ[key] = ""
 
     from app.core.config import get_settings
 

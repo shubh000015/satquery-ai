@@ -14,17 +14,17 @@ User input ──▶ Input validator ──▶ Router agent ──┬─▶ Sing
                                        Result integration ──▶ Response ──▶ Execution trace
 ```
 
-## Status: pipeline real, weights not wired yet
+## Status: pipeline real, specialists call the Kaggle server when configured
 
 The orchestration, validation, evidence generation, tracing, sessions and
-reports are all real. The **specialists currently run a deterministic heuristic
-baseline** (spectral indices, Otsu thresholds, connected components,
-radiometrically normalised bi-temporal differencing) rather than fine-tuned
-models, and every response says so in `inferenceBackend`.
+reports are all real. Point `SATQUERY_ML_ENDPOINT` at the URL printed by
+`ml/notebooks/kaggle_serve_models.ipynb` (or `python ml/serve.py`) and every
+specialist posts to that server. `/api/health` reports `weightsWired` and
+whether the tunnel is reachable.
 
-That is deliberate: it makes the agentic layer demonstrable and testable now,
-and swapping in RS-adapted checkpoints later is a per-tool change behind an
-unchanged API. See [Wiring a fine-tuned model](#wiring-a-fine-tuned-model).
+If the URL is blank or the call fails, the tool falls back to the deterministic
+heuristic baseline and says so in `inferenceBackend` and the trace. See
+[Wiring a fine-tuned model](#wiring-a-fine-tuned-model).
 
 ## Quick start
 
@@ -53,7 +53,7 @@ demo missions always use the mock.
 Run the tests, or see the whole pipeline without a browser:
 
 ```bash
-pytest                              # 39 tests, no network or model weights needed
+pytest                              # no network or model weights needed
 python scripts/demo_pipeline.py     # synthetic GeoTIFFs through every task
 python scripts/demo_pipeline.py --report
 ```
@@ -152,16 +152,17 @@ renders all of it as markdown.
 
 ## Wiring a fine-tuned model
 
-1. Serve the checkpoint behind an HTTP endpoint.
-2. Set the matching variable (see `.env.example`): `SATQUERY_VLM_ENDPOINT`,
-   `SATQUERY_GROUNDING_ENDPOINT`, `SATQUERY_CHANGE_ENDPOINT`,
-   `SATQUERY_FUSION_ENDPOINT`. The registry row flips to `wired`.
-3. Implement `run_endpoint(ctx, endpoint)` on that tool in `app/tools/`,
-   returning a `ToolOutput`.
+1. Serve the stack (`ml/serve.py` on Kaggle, or locally).
+2. Set `SATQUERY_ML_ENDPOINT` to that base URL (see `.env.example`). Per-task
+   `SATQUERY_VLM_ENDPOINT` / `GROUNDING` / `CHANGE` / `FUSION` override the
+   shared URL when you split servers. Registry rows flip to `wired`.
+3. Each specialist already implements `run_endpoint`. A failed or empty call
+   falls back to the heuristic baseline and says so in the trace — it never
+   silently pretends.
 
-Until step 3, a configured endpoint falls back to the baseline and says so in
-the trace and in `warnings` — it never silently pretends. Nothing else changes:
-same routing, same schemas, same evidence contract, same frontend.
+A Cloudflare quick tunnel dies when the Kaggle session stops. Paste the new
+URL into `backend/.env` and restart uvicorn. Nothing else changes: same
+routing, same schemas, same evidence contract, same frontend.
 
 ## Layout
 
@@ -185,7 +186,7 @@ app/
     sessions.py        session history, JSON-backed
     report.py          markdown reports
 scripts/demo_pipeline.py
-tests/                 39 tests over router, validator, analysis and the API
+tests/                 router, validator, analysis, endpoint seams, API
 ```
 
 `rasterio` is optional. With it, CRS, geotransform and multi-band stacks are read

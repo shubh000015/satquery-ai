@@ -95,13 +95,11 @@ On Kaggle, open `notebooks/kaggle_serve_models.ipynb`, set the accelerator to
 of weights, smoke-tests each model separately so a failure names itself, starts
 the server, and prints a `https://*.trycloudflare.com` URL.
 
-Put that URL in `backend/.env` — all four settings point at the same server:
+Put that URL in `backend/.env` as one shared setting (per-task URLs are optional
+overrides):
 
 ```
-SATQUERY_VLM_ENDPOINT=https://<subdomain>.trycloudflare.com
-SATQUERY_GROUNDING_ENDPOINT=https://<subdomain>.trycloudflare.com
-SATQUERY_CHANGE_ENDPOINT=https://<subdomain>.trycloudflare.com
-SATQUERY_FUSION_ENDPOINT=https://<subdomain>.trycloudflare.com
+SATQUERY_ML_ENDPOINT=https://<subdomain>.trycloudflare.com
 ```
 
 Locally, without GPUs, the server still starts and every task degrades to its

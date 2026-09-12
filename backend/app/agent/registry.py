@@ -24,7 +24,7 @@ MODEL_SPECS: tuple[ModelSpec, ...] = (
             "execution trace is evaluated."
         ),
         tasks=[],
-        endpoint_setting="vlm_endpoint",
+        endpoint_setting=None,
     ),
     ModelSpec(
         key="vqa",
@@ -131,20 +131,23 @@ _BY_KEY = {spec.key: spec for spec in MODEL_SPECS}
 
 
 def endpoint_for(key: str, settings: Settings | None = None) -> str | None:
-    """Configured inference endpoint for a registry row, if any."""
+    """Configured inference endpoint for a registry row, if any.
+
+    A blank per-task URL falls back to `SATQUERY_ML_ENDPOINT`, which is how a
+    single Kaggle/cloudflared server covers every specialist.
+    """
     settings = settings or get_settings()
     spec = _BY_KEY.get(key)
     if spec is None or not spec.endpoint_setting:
         return None
-    value = getattr(settings, spec.endpoint_setting, None)
-    return value or None
+    return settings.resolved_endpoint(spec.endpoint_setting)
 
 
 def model_specs(settings: Settings | None = None) -> list[ModelSpec]:
     settings = settings or get_settings()
     resolved: list[ModelSpec] = []
     for spec in MODEL_SPECS:
-        if spec.key == "mensuration":
+        if spec.key in ("mensuration", "controller"):
             status = "available"
         else:
             status = "wired" if endpoint_for(spec.key, settings) else "planned"
@@ -162,7 +165,7 @@ def display_name(key: str, settings: Settings | None = None) -> str:
     resolved = _BY_KEY[key]
     if endpoint_for(key, settings):
         return resolved.primary_model
-    if key == "mensuration":
+    if key in ("mensuration", "controller"):
         return resolved.primary_model
     return f"{resolved.primary_model} (baseline)"
 

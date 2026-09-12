@@ -130,7 +130,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function fetchHealth() {
-  return request<{ status: string; rasterio: boolean; weightsWired: number }>("/api/health");
+  return request<{
+    status: string;
+    rasterio: boolean;
+    weightsWired: number;
+    mlEndpoint?: string | null;
+    mlReachable?: boolean | null;
+  }>("/api/health");
 }
 
 export async function fetchRegistry() {
