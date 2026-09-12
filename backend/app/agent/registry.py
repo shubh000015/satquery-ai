@@ -15,48 +15,61 @@ MODEL_SPECS: tuple[ModelSpec, ...] = (
     ModelSpec(
         key="controller",
         requirement="Agent Controller",
-        primary_model="Qwen2.5-7B (LangGraph)",
-        fallback_model="Mistral-7B-Instruct",
+        primary_model="Rule-based router (deterministic)",
+        fallback_model=None,
         benchmarks=["Synthetic Routing Traces"],
-        purpose="Task classification, tool execution, auditable trace logs.",
+        purpose=(
+            "Task classification, tool execution, auditable trace logs. Deliberately "
+            "not an LLM: routing must be reproducible, and only the observable "
+            "execution trace is evaluated."
+        ),
         tasks=[],
         endpoint_setting="vlm_endpoint",
     ),
     ModelSpec(
         key="vqa",
         requirement="Single-Image VQA",
-        primary_model="Qwen2.5-VL-7B-Instruct",
-        fallback_model="GeoChat / EarthGPT",
+        primary_model="BigEarthNet ResNet-50 → RSCoVLM-7B",
+        fallback_model="RSCoVLM-7B direct vision",
         benchmarks=["RSVQA", "RSVQAxBEN"],
-        purpose="Mandatory baseline: visual QA on single optical/SAR tiles.",
+        purpose=(
+            "Mandatory baseline: visual QA on single optical/SAR tiles. The "
+            "classifier decides the verdict, the VLM only phrases it."
+        ),
         tasks=["vqa"],
         endpoint_setting="vlm_endpoint",
     ),
     ModelSpec(
         key="grounding",
         requirement="Text Grounding",
-        primary_model="Qwen2.5-VL-7B",
-        fallback_model="Grounding DINO",
+        primary_model="Grounding DINO (base)",
+        fallback_model="Compact-component heuristic",
         benchmarks=["VRSBench", "DIOR-RSVG"],
-        purpose="Normalised bounding box coordinate output.",
+        purpose=(
+            "Open-vocabulary text-to-box detection. Trained on natural images, so "
+            "overhead views are out of domain and scores are reported unadjusted."
+        ),
         tasks=["grounding"],
         endpoint_setting="grounding_endpoint",
     ),
     ModelSpec(
         key="segmentation",
         requirement="Referring Segmentation",
-        primary_model="Qwen2.5-VL + SAM 2",
-        fallback_model="LISA / GLaMM",
+        primary_model="SAM 2.1 (Hiera-L), box-prompted",
+        fallback_model="Threshold mask",
         benchmarks=["RRSIS-D", "SAM-RS"],
-        purpose="Pixel-accurate binary mask generation.",
+        purpose=(
+            "Pixel-accurate masks from Grounding DINO's boxes. SAM 2 does not read "
+            "text, so the query steers it only through those boxes."
+        ),
         tasks=["grounding"],
         endpoint_setting="grounding_endpoint",
     ),
     ModelSpec(
         key="caption",
         requirement="Scene Captioning",
-        primary_model="Qwen2.5-VL-7B",
-        fallback_model="RemoteCLIP + Llama-3-8B",
+        primary_model="RSCoVLM-7B (RS-adapted Qwen2.5-VL)",
+        fallback_model="Deterministic template",
         benchmarks=["VRSBench", "RSICD"],
         purpose="Detailed scene summaries and land-cover tagging.",
         tasks=["caption"],
@@ -65,30 +78,40 @@ MODEL_SPECS: tuple[ModelSpec, ...] = (
     ModelSpec(
         key="change-vqa",
         requirement="Bi-Temporal Change VQA",
-        primary_model="ChangeChat / RS-TVLM",
-        fallback_model="Multi-Image Qwen2.5-VL",
+        primary_model="ChangeFormerV6 + per-date class comparison",
+        fallback_model="Per-date class comparison only",
         benchmarks=["CDVQA", "LEVIR-CC"],
-        purpose="Mandatory change analysis: reasoning over T1 vs T2.",
+        purpose=(
+            "Mandatory change analysis. The model localises and measures change; "
+            "direction (increase vs decrease) comes from comparing the same class "
+            "at both dates, which a binary mask cannot express."
+        ),
         tasks=["change-vqa"],
         endpoint_setting="change_endpoint",
     ),
     ModelSpec(
         key="change-mask",
         requirement="Spatial Change Masks",
-        primary_model="ChangeFormer / BIT",
-        fallback_model="STANet / SNUNet",
+        primary_model="ChangeFormerV6 (LEVIR-CD weights)",
+        fallback_model="Otsu on change magnitude",
         benchmarks=["LEVIR-CD", "WHU-CD"],
-        purpose="Generates binary/multi-class change heatmaps.",
+        purpose=(
+            "Binary change heatmaps. LEVIR-CD weights are aerial building change, "
+            "so built-up change is its strong suit and vegetation change is weaker."
+        ),
         tasks=["change"],
         endpoint_setting="change_endpoint",
     ),
     ModelSpec(
         key="fusion",
         requirement="Optical–SAR Fusion",
-        primary_model="CROMA + Qwen2.5",
-        fallback_model="Dual-Branch (ViT + Swin)",
+        primary_model="CROMA-base + BigEarthNet ResNet-50",
+        fallback_model="Per-sensor index comparison",
         benchmarks=["BigEarthNet-MM", "FUSAR"],
-        purpose="Cross-modal fusion for cloud-penetrating joint analysis.",
+        purpose=(
+            "Cross-modal joint analysis. CROMA measures how far the two sensors "
+            "agree; the per-modality classifier says what each one contributes."
+        ),
         tasks=["cross-modal"],
         endpoint_setting="fusion_endpoint",
     ),

@@ -1,21 +1,36 @@
-# SatQuery ML — two-stage land-cover pipeline.
+# SatQuery ML — inference-only. Nothing here is trained; every checkpoint is
+# downloaded from HuggingFace, torchgeo, or a GitHub release. See
+# satquery_ml/registry.py for what each model is and who trained it.
+#
 # Most of this is preinstalled on Kaggle; running the install is still safe.
 
-# Stage 1: the land-cover classifier we train.
 torch>=2.4
 torchvision>=0.19
 pillow>=10.0
 numpy>=1.26
 
-# Stage 2: Qwen2.5 phrases the classifier's findings.
+# Vision-language model (RSCoVLM / Qwen2.5-VL) and Grounding DINO.
 transformers>=4.51
 accelerate>=1.0
-bitsandbytes>=0.45        # 4-bit weights for the LLM; NVIDIA CUDA only
+bitsandbytes>=0.45        # 4-bit VLM weights; NVIDIA CUDA only
+safetensors>=0.4
+huggingface-hub>=0.26
 
-# Serving both stages to the SatQuery backend.
+# BigEarthNet classifier. timm is the fallback loader when configilm is absent.
+timm>=1.0
+
+# CROMA radar-optical joint encoder.
+torchgeo>=0.7
+
+# Serving to the SatQuery backend.
 fastapi>=0.115
 uvicorn[standard]>=0.30
 pydantic>=2.8
 
+# Optional, installed by the Kaggle notebook rather than pinned here:
+#   configilm            official BigEarthNet v2.0 loader (timm path works without it)
+#   sam2                 referring segmentation; grounding degrades to boxes only
+#   ChangeFormer (git)   cloned to ml/vendor/ChangeFormer, not a PyPI package
+#
 # Building the dataset from raw BigEarthNet needs pyarrow as well —
 # see dataset_builder/requirements.txt (CPU-only, no GPU packages).

@@ -8,6 +8,7 @@ from app.schemas.agent import Box, Metric
 from app.services import analysis
 from app.tools import common
 from app.tools.base import Tool, ToolContext, ToolOutput
+from app.tools.endpoint_client import ask_fusion
 
 
 def _align(*masks: np.ndarray) -> list[np.ndarray]:
@@ -42,6 +43,47 @@ class FusionTool(Tool):
     task = "cross-modal"
     model_key = "fusion"
     produces = ["mask", "metrics", "boxes"]
+
+    def run_endpoint(self, ctx: ToolContext, endpoint: str) -> ToolOutput | None:
+        """Per-modality land cover plus CROMA's optical-SAR agreement score.
+
+        Keeps the baseline's masks and per-sensor metrics as the spatial evidence
+        and replaces only the prose, because the served models return labels and
+        an agreement score, not geometry.
+        """
+        sar_index = ctx.sar_index()
+        if sar_index is None:
+            return None  # nothing to fuse; the baseline explains why
+
+        optical_index = ctx.optical_index()
+        reply = ask_fusion(
+            endpoint,
+            ctx.scenes[optical_index],
+            ctx.scenes[sar_index],
+            ctx.query,
+            optical_modality=ctx.assets[optical_index].modality,
+        )
+        output = self.run_baseline(ctx)
+
+        output.answer = reply.answer
+        output.confidence = max(0.15, min(0.97, reply.confidence))
+        output.params["endpoint_model"] = reply.model
+
+        agreement = reply.extra.get("agreement") or {}
+        if "cosineSimilarity" in agreement:
+            output.metrics.insert(
+                0,
+                Metric(
+                    label="Optical–SAR agreement",
+                    value=f"{agreement['cosineSimilarity']:.2f}",
+                    hint=f"cosine similarity of joint encoder embeddings · {reply.model}",
+                ),
+            )
+        # Appended verbatim: the server already words these, and normalising the
+        # first letter here would turn "SAR adds ..." into "Sar adds ...".
+        output.observations.extend(reply.findings)
+        output.notes.extend(reply.notes)
+        return output
 
     def run_baseline(self, ctx: ToolContext) -> ToolOutput:
         optical_index = ctx.optical_index()

@@ -24,13 +24,14 @@ DEFAULT_LLM = "Qwen/Qwen2.5-7B-Instruct"
 
 SYSTEM_PROMPT = (
     "You are SatQuery, an assistant that explains satellite image analysis to analysts. "
-    "A land-cover classifier has already analysed the image and you are given its findings. "
-    "Rules you must follow:\n"
+    "Specialist remote-sensing models have already analysed the imagery and you are "
+    "given their findings. Rules you must follow:\n"
     "1. Use ONLY the findings provided. Never introduce land-cover types, place names, "
     "dates, object counts, or area measurements that are not in the findings.\n"
     "2. If a verdict is provided, your answer must agree with it.\n"
-    "3. You cannot see the image yourself, so never claim to observe anything directly.\n"
-    "4. Reply with 1-3 plain sentences. No bullet points, headings, or preamble."
+    "3. Never alter a measured number. Quote it as given or omit it.\n"
+    "4. You cannot see the imagery yourself, so never claim to observe anything directly.\n"
+    "5. Reply with 1-3 plain sentences. No bullet points, headings, or preamble."
 )
 
 _YES_NO_OPENERS = (
@@ -62,6 +63,15 @@ class Facts:
         if self.verdict:
             return self.verdict
         return self.present[0] if self.present else "unknown"
+
+    # `Verbalizer.phrase` works off these two methods alone, so anything that
+    # implements them can be phrased. `facts.Evidence` is the general version
+    # used by the change, grounding and fusion paths.
+    def fact_block(self) -> str:
+        return _fact_block(self)
+
+    def template_answer(self) -> str:
+        return template_answer(self)
 
 
 def _is_yes_no(question: str) -> bool:
@@ -159,6 +169,24 @@ def template_answer(facts: Facts) -> str:
     return f"This {sensor} scene contains {listing}."
 
 
+def enforce_verdict(answer: str, facts) -> str:
+    """Override the language model if it contradicts the specialist's verdict.
+
+    The specialist owns the yes/no call. A model that opens with the opposite
+    word has overridden evidence it was told to preserve, so we discard its
+    phrasing rather than ship a confidently wrong answer.
+    """
+    answer = re.sub(r"\s+", " ", answer).strip()
+    if not answer:
+        return facts.template_answer()
+
+    if facts.verdict in {"yes", "no"}:
+        opposite = "no" if facts.verdict == "yes" else "yes"
+        if answer[:24].lower().startswith(opposite):
+            return facts.template_answer()
+    return answer
+
+
 def _fact_block(facts: Facts) -> str:
     sensor = MODALITY_PHRASE.get(facts.modality, facts.modality)
     lines = [
@@ -240,15 +268,16 @@ class Verbalizer:
     def label(self) -> str:
         return self.model_name.split("/")[-1] if self.available else "template"
 
-    def phrase(self, facts: Facts, max_new_tokens: int = 120) -> str:
+    def phrase(self, facts, max_new_tokens: int = 120) -> str:
+        """Phrase anything exposing `fact_block()`, `template_answer()` and `verdict`."""
         if not self.available:
-            return template_answer(facts)
+            return facts.template_answer()
 
         import torch
 
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": _fact_block(facts)},
+            {"role": "user", "content": facts.fact_block()},
         ]
         text = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
@@ -265,20 +294,20 @@ class Verbalizer:
                 )
         except Exception as exc:  # noqa: BLE001
             print(f"WARNING: generation failed ({exc}); using template.", flush=True)
-            return template_answer(facts)
+            return facts.template_answer()
 
         new_tokens = generated[0, inputs["input_ids"].shape[1] :]
         answer = self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
         answer = re.sub(r"\s+", " ", answer)
 
         if not answer:
-            return template_answer(facts)
+            return facts.template_answer()
 
         # Guard the one thing the model is not allowed to change.
         if facts.verdict in {"yes", "no"}:
             opening = answer[:24].lower()
             opposite = "no" if facts.verdict == "yes" else "yes"
             if opening.startswith(opposite):
-                return template_answer(facts)
+                return facts.template_answer()
 
         return answer

@@ -8,6 +8,7 @@ from app.schemas.agent import Metric
 from app.services import analysis
 from app.tools import common
 from app.tools.base import Tool, ToolContext, ToolOutput
+from app.tools.endpoint_client import ask_change, decode_rle
 
 _CHANGE_TARGET_DEFAULT = "builtup"
 _SIGNIFICANT_POINTS = 1.0  # percentage points of frame coverage
@@ -32,6 +33,52 @@ class ChangeMaskTool(Tool):
     task = "change"
     model_key = "change-mask"
     produces = ["mask", "boxes", "metrics"]
+
+    def run_endpoint(self, ctx: ToolContext, endpoint: str) -> ToolOutput | None:
+        """ChangeFormer's change map replaces the differencing baseline's mask.
+
+        The served endpoint measures changed fraction and region count from the
+        mask itself, so those numbers are model-derived rather than thresholded
+        brightness. Directional gain/loss stays local because a binary change
+        mask cannot express direction.
+        """
+        before_asset, after_asset, before_scene, after_scene = _pair(ctx)
+        reply = ask_change(endpoint, before_scene, after_scene, ctx.query)
+        output = self.run_baseline(ctx)
+
+        output.answer = reply.answer
+        output.confidence = max(0.15, min(0.97, reply.confidence))
+        output.params["endpoint_model"] = reply.model
+
+        runs = reply.extra.get("changeMaskRle")
+        height = reply.extra.get("maskHeight")
+        width = reply.extra.get("maskWidth")
+        if runs and height and width:
+            array = decode_rle(runs, int(height), int(width))
+            mask = common.build_mask(
+                common.MASK_ID_CHANGE, "Change", common.COLOR_CHANGE, array, opacity=0.42
+            )
+            if mask:
+                output.masks = [mask]
+            boxes = common.boxes_from_mask(array, "builtup", limit=12, label_prefix="Change")
+            if boxes:
+                output.boxes = boxes
+
+        stats = reply.extra.get("changeStats") or {}
+        if stats:
+            output.metrics.insert(
+                0,
+                Metric(
+                    label="Changed area (model)",
+                    value=f"{stats.get('changedPercent', 0):.2f}%",
+                    hint=f"{stats.get('regionCount', 0)} region(s) · {reply.model}",
+                ),
+            )
+        output.observations.insert(
+            0, f"Change map produced by {reply.model}; area and region count measured from it."
+        )
+        output.notes.extend(reply.notes)
+        return output
 
     def run_baseline(self, ctx: ToolContext) -> ToolOutput:
         before_asset, after_asset, before_scene, after_scene = _pair(ctx)
@@ -98,6 +145,58 @@ class ChangeVqaTool(Tool):
     task = "change-vqa"
     model_key = "change-vqa"
     produces = ["answer", "metrics", "mask"]
+
+    def run_endpoint(self, ctx: ToolContext, endpoint: str) -> ToolOutput | None:
+        """Model localises the change; the per-date class comparison gives direction.
+
+        Deliberately keeps the local verdict as the answer. "Has built-up
+        increased or decreased?" needs a signed comparison of the same class at
+        two dates, and a binary change mask cannot supply that — the served
+        endpoint says as much in its own notes. So the model contributes *where*
+        and *how much*, and the class comparison contributes *which way*.
+        """
+        before_scene = ctx.scenes[0]
+        after_scene = ctx.scenes[1] if len(ctx.scenes) > 1 else ctx.scenes[0]
+        reply = ask_change(endpoint, before_scene, after_scene, ctx.query)
+        output = self.run_baseline(ctx)
+
+        output.confidence = max(output.confidence, min(0.97, reply.confidence))
+        output.params["endpoint_model"] = reply.model
+
+        stats = reply.extra.get("changeStats") or {}
+        if stats:
+            output.metrics.insert(
+                0,
+                Metric(
+                    label="Changed area (model)",
+                    value=f"{stats.get('changedPercent', 0):.2f}%",
+                    hint=f"{stats.get('regionCount', 0)} region(s) · {reply.model}",
+                ),
+            )
+            where = stats.get("where")
+            output.observations.insert(
+                0,
+                f"{reply.model} measured {stats.get('changedPercent', 0):.2f}% of the frame as changed"
+                + (f", concentrated in the {where}." if where else ".")
+                + " Direction comes from the per-date class comparison below, because a "
+                "binary change mask cannot signal increase versus decrease.",
+            )
+
+        runs = reply.extra.get("changeMaskRle")
+        height, width = reply.extra.get("maskHeight"), reply.extra.get("maskWidth")
+        if runs and height and width:
+            mask = common.build_mask(
+                common.MASK_ID_CHANGE,
+                "Change",
+                common.COLOR_CHANGE,
+                decode_rle(runs, int(height), int(width)),
+                opacity=0.42,
+            )
+            if mask:
+                output.masks = [mask]
+
+        output.notes.extend(reply.notes)
+        return output
 
     def run_baseline(self, ctx: ToolContext) -> ToolOutput:
         before_asset, after_asset, before_scene, after_scene = _pair(ctx)

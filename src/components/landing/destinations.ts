@@ -99,8 +99,8 @@ export const LABS = [
 ] as const;
 
 export const PS_COVER = [
-  { k: "VQA", model: "Qwen2.5-VL", v: "Satellite image question answering and scene description using optical or SAR imagery." },
-  { k: "Grounding", model: "Grounding DINO + SAM 2", v: "Text-guided object localization and pixel-level segmentation for identifying requested regions." },
-  { k: "Bi-Temporal Analysis", model: "ChangeFormer + Qwen2.5-VL", v: "Detects changes between images captured at different times and generates natural-language change descriptions." },
-  { k: "SAR + Optical Analysis", model: "CROMA + Qwen2.5-VL", v: "Fuses SAR and optical imagery to extract complementary information and provide context-aware analysis." },
+  { k: "VQA", model: "BigEarthNet ResNet-50 + RSCoVLM-7B", v: "Satellite image question answering and scene description using optical or SAR imagery. The classifier decides the verdict; the vision-language model only phrases it." },
+  { k: "Grounding", model: "Grounding DINO + SAM 2.1", v: "Text-guided object localization and pixel-level segmentation for identifying requested regions." },
+  { k: "Bi-Temporal Analysis", model: "ChangeFormerV6 + RSCoVLM-7B", v: "Detects changes between images captured at different times and generates natural-language change descriptions from the measured change map." },
+  { k: "SAR + Optical Analysis", model: "CROMA-base + BigEarthNet ResNet-50", v: "Fuses SAR and optical imagery to extract complementary information, reporting what each sensor contributes and how far the two agree." },
 ] as const;

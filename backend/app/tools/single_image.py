@@ -4,11 +4,55 @@ from __future__ import annotations
 
 import numpy as np
 
-from app.schemas.agent import Metric
+from app.schemas.agent import Box, Metric
 from app.services import analysis
 from app.tools import common
 from app.tools.base import Tool, ToolContext, ToolOutput
-from app.tools.endpoint_client import ask_vlm
+from app.tools.endpoint_client import ask_grounding, ask_vlm, decode_rle
+
+
+def _boxes_from_endpoint(raw: list[dict]) -> list[Box]:
+    """Server boxes are normalised xyxy; the UI draws in a 0..100 x/y/w/h viewBox."""
+    boxes: list[Box] = []
+    for index, item in enumerate(raw, start=1):
+        coords = item.get("box") or []
+        if len(coords) != 4:
+            continue
+        x0, y0, x1, y1 = (float(v) * 100.0 for v in coords)
+        boxes.append(
+            Box(
+                id=f"grounded-{index}",
+                label=f"{common.nice(str(item.get('label') or 'region'))} {index:02d}",
+                x=round(min(x0, x1), 2),
+                y=round(min(y0, y1), 2),
+                w=round(abs(x1 - x0), 2),
+                h=round(abs(y1 - y0), 2),
+                score=round(float(item.get("score", 0.5)), 3),
+                kind="grounding",
+            )
+        )
+    return boxes
+
+
+def _masks_from_endpoint(raw: list[dict], scene) -> list:
+    """Decode the run-length masks and re-render them as SVG paths for the UI."""
+    masks = []
+    for index, item in enumerate(raw, start=1):
+        runs = item.get("rle")
+        height, width = item.get("height"), item.get("width")
+        if not runs or not height or not width:
+            continue
+        array = decode_rle(runs, int(height), int(width))
+        mask = common.build_mask(
+            f"grounded-mask-{index}",
+            f"{common.nice(str(item.get('label') or 'region'))} mask",
+            common.COLOR_GROUNDING,
+            array,
+            opacity=0.34,
+        )
+        if mask:
+            masks.append(mask)
+    return masks
 
 
 def _endpoint_answer(tool: Tool, ctx: ToolContext, endpoint: str, task: str) -> ToolOutput:
@@ -259,6 +303,36 @@ class GroundingTool(Tool):
     task = "grounding"
     model_key = "grounding"
     produces = ["boxes", "mask"]
+
+    def run_endpoint(self, ctx: ToolContext, endpoint: str) -> ToolOutput | None:
+        """Grounding DINO boxes, refined by SAM 2 where it is available.
+
+        Unlike the VQA tools this replaces the baseline's spatial evidence rather
+        than decorating it: the whole point of the grounding task is that the
+        boxes come from a model that read the query, not from a brightness
+        threshold. The baseline's metrics are kept as scene context.
+        """
+        reply = ask_grounding(endpoint, ctx.primary_scene, ctx.query)
+        output = self.run_baseline(ctx)
+
+        output.answer = reply.answer
+        output.confidence = max(0.15, min(0.97, reply.confidence))
+        output.params["endpoint_model"] = reply.model
+
+        boxes = _boxes_from_endpoint(reply.boxes)
+        if boxes:
+            output.boxes = boxes
+        masks = _masks_from_endpoint(reply.masks, ctx.primary_scene)
+        if masks:
+            output.masks = masks
+
+        output.observations.insert(
+            0,
+            f"{len(boxes)} region(s) located by {reply.model} from the query text; "
+            + ("SAM 2 refined them to pixel masks." if masks else "no segmentation model available, boxes only."),
+        )
+        output.notes.extend(reply.notes)
+        return output
 
     def run_baseline(self, ctx: ToolContext) -> ToolOutput:
         asset = ctx.primary_asset
