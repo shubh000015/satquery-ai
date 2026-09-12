@@ -136,6 +136,25 @@ heuristic baseline and says so in the trace — the demo cannot hard-fail.
 
 ### 4b. Test locally like a chatbot (recommended before demo day)
 
+**One-time Windows setup (Python 3.13, CUDA 12.4):**
+
+```powershell
+# 1. Install a CUDA-enabled PyTorch (pip's default is CPU-only)
+python -m pip uninstall -y torch
+python -m pip install --index-url https://download.pytorch.org/whl/cu124 torch torchvision
+
+# 2. Install the rest of the stack — the version pins in requirements.txt
+#    matter (transformers 5.x + bitsandbytes 0.50 has a regression that
+#    breaks the Qwen2.5-VL vision encoder; we stay on transformers 4.54.x)
+python -m pip install -r ml\requirements.txt
+
+# Sanity check
+python -c "import torch; print('cuda', torch.cuda.is_available(), 'vram', torch.cuda.get_device_properties(0).total_memory/1e9 if torch.cuda.is_available() else 0, 'GB')"
+```
+
+Then run `ml/tests/test_serve_utils_smoke.py` to generate a synthetic S1
+patch, or drop a real BigEarthNet patch folder somewhere on disk.
+
 `ml/chat.py` is an interactive REPL that eats **BigEarthNet GeoTIFFs directly**
 — it reads VV/VH bands and renders the exact pseudo-RGB the model saw during
 training (`R=VV, G=VH, B=|VV−VH|`, 2/98 percentile stretch), so you can sanity

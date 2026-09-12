@@ -1,17 +1,26 @@
 # SatQuery AI — fine-tuning stack (SIH26167 task #2).
 # Install on a machine with an NVIDIA GPU (CUDA). On Kaggle/Colab most of
 # these are preinstalled; the pip install is still safe to run.
+#
+# The upper bounds here are NOT paranoia. Empirically:
+#   * transformers 5.x refuses bitsandbytes <0.46.1, but bitsandbytes 0.46+
+#     has an assertion regression in `fix_4bit_weight_quant_state_from_module`
+#     that fires on non-quantised Linear layers (the Qwen2.5-VL vision
+#     encoder isn't 4-bit even when the LM is). So we pin transformers to the
+#     4.5x line where Unsloth trained and bnb 0.45.x still works.
+#   * torch is not pinned because CUDA-vs-CPU wheels are chosen via
+#     --index-url at install time (see ml/README.md).
 
 torch>=2.4
-transformers>=4.51
+transformers>=4.51,<4.55
 accelerate>=1.0
-peft>=0.14
-bitsandbytes>=0.45        # 4-bit NF4 quantisation (QLoRA); NVIDIA CUDA only
+peft>=0.19,<0.21           # 0.19+ matches adapter_config.json from Unsloth
+bitsandbytes>=0.45,<0.46   # 4-bit NF4 quantisation (QLoRA); NVIDIA CUDA only
 datasets>=3.0
-qwen-vl-utils>=0.0.10     # official Qwen2.5-VL image preprocessing helpers
+qwen-vl-utils>=0.0.10      # official Qwen2.5-VL image preprocessing helpers
 pillow>=10.0
 numpy>=1.26
-pyarrow>=15.0             # reads BigEarthNet v2.0 metadata.parquet
+pyarrow>=15.0              # reads BigEarthNet v2.0 metadata.parquet
 
 # Serving the fine-tuned adapter to the SatQuery backend
 # (ml/serve.py exposes /v1/vqa and /v1/chat; ml/chat.py is the CLI REPL)
