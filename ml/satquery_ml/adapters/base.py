@@ -113,15 +113,20 @@ def torch_dtype(device: str):
     return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
 
 
-def place_module(module, device: str):
-    """Move a module onto `device` in the compute dtype that card supports.
+def place_module(module, device: str, dtype=None):
+    """Move a module onto `device` in a single compute dtype.
 
     HuggingFace / safetensors often load weights as bf16 regardless of the GPU.
     Leaving them that way and then sending a float32 batch is exactly
     `RuntimeError: expected scalar type BFloat16 but found Float`. Cast both
     sides here so every adapter agrees with itself.
+
+    Pass `dtype` to override the card default. Grounding DINO needs this:
+    its BERT text tower keeps activations in float32 even after a bf16 cast,
+    then dies in the text-enhancer linear with `mat1 Float, mat2 BFloat16`.
     """
-    dtype = torch_dtype(device)
+    if dtype is None:
+        dtype = torch_dtype(device)
     return module.to(device=device, dtype=dtype), dtype
 
 

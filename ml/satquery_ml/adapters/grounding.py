@@ -18,7 +18,7 @@ import re
 import numpy as np
 
 from ..facts import Evidence, clamp_confidence
-from .base import Adapter, AdapterUnavailable, move_batch, place_module, torch_dtype
+from .base import Adapter, AdapterUnavailable, move_batch, place_module
 
 BOX_THRESHOLD = 0.25
 TEXT_THRESHOLD = 0.20
@@ -87,14 +87,21 @@ class GroundingAdapter(Adapter):
         self.segmenter_error: str | None = None
 
     def _load(self) -> None:
+        import torch
         from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor
 
         detector_id = "/".join(self.spec.source.rstrip("/").rsplit("/", 2)[-2:])
         self.processor = AutoProcessor.from_pretrained(detector_id)
+        # Float32 on purpose. A half/bf16 cast only sticks on the vision
+        # backbone; BERT LayerNorms and the text-enhancer keep emitting
+        # float32, then `F.linear` dies with "mat1 Float, mat2 BFloat16".
+        # The detector is ~1 GB in fp32 — it fits next to SAM 2 on a T4.
         loaded = AutoModelForZeroShotObjectDetection.from_pretrained(
-            detector_id, dtype=torch_dtype(self.device)
+            detector_id, dtype=torch.float32
         )
-        self.model, self.dtype = place_module(loaded.eval(), self.device)
+        self.model, self.dtype = place_module(
+            loaded.eval(), self.device, dtype=torch.float32
+        )
 
         # SAM 2 is optional: boxes alone still answer a grounding query, so a
         # missing sam2 package degrades the output instead of failing the task.
@@ -134,7 +141,10 @@ class GroundingAdapter(Adapter):
             self.device,
             self.model,
         )
-        with torch.inference_mode():
+        # Autocast would put the vision path in bf16/fp16 and leave the text
+        # tower in fp32 — the same mixed-dtype crash as a half-cast load.
+        device_type = "cuda" if str(self.device).startswith("cuda") else "cpu"
+        with torch.inference_mode(), torch.autocast(device_type=device_type, enabled=False):
             outputs = self.model(**inputs)
 
         results = self.processor.post_process_grounded_object_detection(

@@ -71,6 +71,17 @@ def test_move_batch_casts_pixels_but_leaves_token_ids_alone():
     conv(moved["pixel_values"])
 
 
+def test_place_module_can_force_float32_even_when_weights_are_bf16():
+    import torch
+
+    conv = torch.nn.Conv2d(3, 4, kernel_size=1).to(dtype=torch.bfloat16)
+    placed, dtype = place_module(conv, "cpu", dtype=torch.float32)
+    assert dtype == torch.float32
+    assert module_dtype(placed) == torch.float32
+    tensor = batch_tensor(np.ones((3, 8, 8), dtype=np.float32), "cpu", placed)
+    assert placed(tensor).dtype == torch.float32
+
+
 def test_place_module_casts_bf16_weights_to_the_compute_dtype():
     import torch
 
