@@ -26,7 +26,7 @@ import numpy as np
 
 from ..facts import Evidence
 from ..verbalizer import SYSTEM_PROMPT, enforce_verdict
-from .base import Adapter, torch_dtype
+from .base import Adapter, move_batch, torch_dtype
 
 # Vision prompt. Separate from SYSTEM_PROMPT because here the model *can* see the
 # image, so the rule is calibration rather than abstention.
@@ -98,16 +98,16 @@ class VlmAdapter(Adapter):
         text = self.processor.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
-        inputs = self.processor(
-            text=[text],
-            images=images if images else None,
-            return_tensors="pt",
-            padding=True,
+        inputs = move_batch(
+            self.processor(
+                text=[text],
+                images=images if images else None,
+                return_tensors="pt",
+                padding=True,
+            ),
+            str(self.model.device),
+            self.model,
         )
-        inputs = {
-            key: value.to(self.model.device) if hasattr(value, "to") else value
-            for key, value in inputs.items()
-        }
 
         with torch.inference_mode():
             generated = self.model.generate(

@@ -18,7 +18,7 @@ import re
 import numpy as np
 
 from ..facts import Evidence, clamp_confidence
-from .base import Adapter, AdapterUnavailable, torch_dtype
+from .base import Adapter, AdapterUnavailable, move_batch, place_module, torch_dtype
 
 BOX_THRESHOLD = 0.25
 TEXT_THRESHOLD = 0.20
@@ -91,10 +91,10 @@ class GroundingAdapter(Adapter):
 
         detector_id = "/".join(self.spec.source.rstrip("/").rsplit("/", 2)[-2:])
         self.processor = AutoProcessor.from_pretrained(detector_id)
-        self.model = AutoModelForZeroShotObjectDetection.from_pretrained(
+        loaded = AutoModelForZeroShotObjectDetection.from_pretrained(
             detector_id, dtype=torch_dtype(self.device)
-        ).to(self.device)
-        self.model.eval()
+        )
+        self.model, self.dtype = place_module(loaded.eval(), self.device)
 
         # SAM 2 is optional: boxes alone still answer a grounding query, so a
         # missing sam2 package degrades the output instead of failing the task.
@@ -129,8 +129,10 @@ class GroundingAdapter(Adapter):
         image = Image.fromarray(np.asarray(rgb, dtype=np.uint8), mode="RGB")
         prompt = build_prompt(query)
 
-        inputs = self.processor(images=image, text=prompt, return_tensors="pt").to(
-            self.device
+        inputs = move_batch(
+            self.processor(images=image, text=prompt, return_tensors="pt"),
+            self.device,
+            self.model,
         )
         with torch.inference_mode():
             outputs = self.model(**inputs)

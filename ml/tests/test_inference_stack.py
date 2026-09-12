@@ -26,6 +26,7 @@ from satquery_ml.adapters.base import (  # noqa: E402
     AdapterUnavailable,
     batch_tensor,
     module_dtype,
+    move_batch,
     place_module,
 )
 from satquery_ml.adapters.grounding import _encode_rle, build_prompt  # noqa: E402
@@ -50,6 +51,24 @@ def test_batch_tensor_matches_a_bf16_module_so_conv_does_not_crash():
     # This is the exact failure mode from the notebook: float32 batch into bf16 weights.
     output = conv(tensor)
     assert output.dtype == torch.bfloat16
+
+
+def test_move_batch_casts_pixels_but_leaves_token_ids_alone():
+    import torch
+
+    conv = torch.nn.Conv2d(3, 4, kernel_size=1).to(dtype=torch.bfloat16)
+    batch = {
+        "pixel_values": torch.ones(1, 3, 8, 8, dtype=torch.float32),
+        "input_ids": torch.tensor([[1, 2, 3]], dtype=torch.long),
+        "attention_mask": torch.ones(1, 3, dtype=torch.long),
+    }
+    moved = move_batch(batch, "cpu", conv)
+
+    assert moved["pixel_values"].dtype == torch.bfloat16
+    assert moved["input_ids"].dtype == torch.long
+    assert moved["attention_mask"].dtype == torch.long
+    # Same crash the notebook hit: float32 pixels into a bf16 conv.
+    conv(moved["pixel_values"])
 
 
 def test_place_module_casts_bf16_weights_to_the_compute_dtype():

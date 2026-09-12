@@ -126,11 +126,21 @@ def place_module(module, device: str):
 
 
 def module_dtype(module):
-    """Dtype of the first parameter, i.e. what conv/linear layers actually expect."""
+    """Compute dtype a module's conv/linear layers expect for activations.
+
+    Skips 4-bit / int quantized weights so a BitsAndBytes VLM does not ask
+    for int8 `pixel_values`. Prefers the HuggingFace `model.dtype` hint, then
+    the first fp32/fp16/bf16 parameter.
+    """
     import torch
 
+    compute = (torch.float32, torch.float16, torch.bfloat16)
+    hinted = getattr(module, "dtype", None)
+    if hinted in compute:
+        return hinted
     for param in module.parameters():
-        return param.dtype
+        if param.dtype in compute:
+            return param.dtype
     return torch.float32
 
 
@@ -144,3 +154,24 @@ def batch_tensor(array, device: str, module):
         .unsqueeze(0)
         .to(device=device, dtype=module_dtype(module))
     )
+
+
+def move_batch(batch, device: str, module) -> dict:
+    """Move a processor batch onto `device` and cast floats to the model dtype.
+
+    HuggingFace processors always emit float32 `pixel_values`. `.to(device)`
+    does not change that, so a bf16 Grounding DINO / VLM then dies with
+    `Input type (float) and bias type (c10::BFloat16) should be the same`.
+    Integer tokens (`input_ids`, masks) stay integers.
+    """
+    dtype = module_dtype(module)
+    moved = {}
+    for key, value in batch.items():
+        if not hasattr(value, "to"):
+            moved[key] = value
+            continue
+        value = value.to(device=device)
+        if value.is_floating_point():
+            value = value.to(dtype=dtype)
+        moved[key] = value
+    return moved
