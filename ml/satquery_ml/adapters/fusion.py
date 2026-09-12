@@ -26,15 +26,13 @@ import numpy as np
 from .. import labels as label_vocab
 from ..bands import CROMA_OPTICAL_BANDS, CROMA_SAR_BANDS, BandStack, resize_chw
 from ..facts import Evidence, clamp_confidence
-from .base import Adapter, AdapterUnavailable, torch_dtype
+from .base import Adapter, AdapterUnavailable, batch_tensor, place_module
 
 
 class FusionAdapter(Adapter):
     """CROMA-base radar-optical encoder, loaded through torchgeo."""
 
     def _load(self) -> None:
-        import torch
-
         try:
             from torchgeo.models import CROMABase_Weights, croma_base
         except ImportError as exc:
@@ -42,9 +40,9 @@ class FusionAdapter(Adapter):
                 "torchgeo>=0.7 is required for CROMA (pip install torchgeo)"
             ) from exc
 
-        self.model = croma_base(weights=CROMABase_Weights.CROMA_VIT)
-        self.model.eval().to(self.device)
-        self.dtype = torch_dtype(self.device)
+        self.model, self.dtype = place_module(
+            croma_base(weights=CROMABase_Weights.CROMA_VIT).eval(), self.device
+        )
 
     def embeddings(self, stack: BandStack) -> dict[str, np.ndarray]:
         """Optical, SAR and joint embeddings for a co-registered pair."""
@@ -65,8 +63,8 @@ class FusionAdapter(Adapter):
         sar = resize_chw(stack.select(CROMA_SAR_BANDS, self.spec.name), size)
         optical = resize_chw(stack.select(CROMA_OPTICAL_BANDS, self.spec.name), size)
 
-        sar_tensor = torch.from_numpy(sar).unsqueeze(0).to(self.device, self.dtype)
-        optical_tensor = torch.from_numpy(optical).unsqueeze(0).to(self.device, self.dtype)
+        sar_tensor = batch_tensor(sar, self.device, self.model)
+        optical_tensor = batch_tensor(optical, self.device, self.model)
 
         with torch.inference_mode():
             output = self.model(x_sar=sar_tensor, x_optical=optical_tensor)

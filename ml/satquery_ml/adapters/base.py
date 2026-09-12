@@ -111,3 +111,36 @@ def torch_dtype(device: str):
     if not device.startswith("cuda"):
         return torch.float32
     return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+
+
+def place_module(module, device: str):
+    """Move a module onto `device` in the compute dtype that card supports.
+
+    HuggingFace / safetensors often load weights as bf16 regardless of the GPU.
+    Leaving them that way and then sending a float32 batch is exactly
+    `RuntimeError: expected scalar type BFloat16 but found Float`. Cast both
+    sides here so every adapter agrees with itself.
+    """
+    dtype = torch_dtype(device)
+    return module.to(device=device, dtype=dtype), dtype
+
+
+def module_dtype(module):
+    """Dtype of the first parameter, i.e. what conv/linear layers actually expect."""
+    import torch
+
+    for param in module.parameters():
+        return param.dtype
+    return torch.float32
+
+
+def batch_tensor(array, device: str, module):
+    """`(1, C, H, W)` tensor on `device` in `module`'s parameter dtype."""
+    import numpy as np
+    import torch
+
+    return (
+        torch.from_numpy(np.ascontiguousarray(array))
+        .unsqueeze(0)
+        .to(device=device, dtype=module_dtype(module))
+    )

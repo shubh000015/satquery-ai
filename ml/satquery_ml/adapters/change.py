@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 
 from ..facts import Evidence, clamp_confidence
-from .base import Adapter, AdapterUnavailable, torch_dtype
+from .base import Adapter, AdapterUnavailable, batch_tensor, place_module
 
 CHANGE_THRESHOLD = 0.5
 MIN_REGION_PIXELS = 24
@@ -72,8 +72,7 @@ class ChangeAdapter(Adapter):
         weights = {key.replace("module.", "", 1): value for key, value in weights.items()}
         self.model.load_state_dict(weights, strict=False)
 
-        self.model.eval().to(self.device)
-        self.dtype = torch_dtype(self.device)
+        self.model, self.dtype = place_module(self.model.eval(), self.device)
 
     # ---- inference -------------------------------------------------------
 
@@ -85,7 +84,7 @@ class ChangeAdapter(Adapter):
 
         size = self.spec.input_size
         tensors = [
-            torch.from_numpy(_to_chw(image, size)).unsqueeze(0).to(self.device, self.dtype)
+            batch_tensor(_to_chw(image, size), self.device, self.model)
             for image in (before, after)
         ]
 

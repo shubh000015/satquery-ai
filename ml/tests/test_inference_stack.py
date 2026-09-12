@@ -21,11 +21,46 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from satquery_ml import registry  # noqa: E402
 from satquery_ml.adapters import change as change_module  # noqa: E402
 from satquery_ml.adapters import fusion as fusion_module  # noqa: E402
-from satquery_ml.adapters.base import Adapter, AdapterUnavailable  # noqa: E402
+from satquery_ml.adapters.base import (  # noqa: E402
+    Adapter,
+    AdapterUnavailable,
+    batch_tensor,
+    module_dtype,
+    place_module,
+)
 from satquery_ml.adapters.grounding import _encode_rle, build_prompt  # noqa: E402
 from satquery_ml.bands import BandStack  # noqa: E402
 from satquery_ml.facts import Evidence, clamp_confidence, is_yes_no  # noqa: E402
 from satquery_ml.loader import ModelLoader, plan_devices  # noqa: E402
+
+
+# --------------------------------------------------------------------------
+# Dtype alignment — the Kaggle crash was "expected BFloat16 but found Float"
+# --------------------------------------------------------------------------
+
+def test_batch_tensor_matches_a_bf16_module_so_conv_does_not_crash():
+    import torch
+
+    conv = torch.nn.Conv2d(3, 4, kernel_size=1).to(dtype=torch.bfloat16)
+    array = np.ones((3, 8, 8), dtype=np.float32)
+    tensor = batch_tensor(array, "cpu", conv)
+
+    assert tensor.dtype == torch.bfloat16
+    assert tensor.shape == (1, 3, 8, 8)
+    # This is the exact failure mode from the notebook: float32 batch into bf16 weights.
+    output = conv(tensor)
+    assert output.dtype == torch.bfloat16
+
+
+def test_place_module_casts_bf16_weights_to_the_compute_dtype():
+    import torch
+
+    conv = torch.nn.Conv2d(3, 4, kernel_size=1).to(dtype=torch.bfloat16)
+    placed, dtype = place_module(conv, "cpu")
+    assert dtype == torch.float32
+    assert module_dtype(placed) == torch.float32
+    tensor = batch_tensor(np.ones((3, 8, 8), dtype=np.float32), "cpu", placed)
+    assert placed(tensor).dtype == torch.float32
 
 
 # --------------------------------------------------------------------------

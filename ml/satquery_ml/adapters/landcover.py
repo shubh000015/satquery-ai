@@ -21,7 +21,7 @@ import numpy as np
 from .. import labels as label_vocab
 from ..bands import BEN_ALL_BANDS, BEN_S1_BANDS, BEN_S2_BANDS, BandStack, resize_chw
 from ..facts import Evidence, clamp_confidence, is_yes_no
-from .base import Adapter, AdapterUnavailable, torch_dtype
+from .base import Adapter, AdapterUnavailable, batch_tensor, place_module
 
 # BigEarthNet v2.0 reference statistics are per-band, but the published models
 # were trained on min-max scaled patches, so a plain 0..1 stack is the right
@@ -33,8 +33,6 @@ class LandCoverAdapter(Adapter):
     """19-class multi-label classifier over Sentinel-1 + Sentinel-2 bands."""
 
     def _load(self) -> None:
-        import torch
-
         self.model = None
         self._loader = None
 
@@ -57,8 +55,7 @@ class LandCoverAdapter(Adapter):
                 flush=True,
             )
 
-        self.model.eval().to(self.device)
-        self.dtype = torch_dtype(self.device)
+        self.model, self.dtype = place_module(self.model.eval(), self.device)
 
     def _load_with_timm(self):
         """Rebuild the architecture with timm and load the published safetensors.
@@ -130,7 +127,7 @@ class LandCoverAdapter(Adapter):
         if array.shape[1] != self.spec.input_size:
             array = resize_chw(array, self.spec.input_size)
 
-        tensor = torch.from_numpy(array).unsqueeze(0).to(self.device, self.dtype)
+        tensor = batch_tensor(array, self.device, self.model)
         with torch.inference_mode():
             logits = self.model(tensor)
         if isinstance(logits, (tuple, list)):
