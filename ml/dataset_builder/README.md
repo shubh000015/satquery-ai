@@ -185,18 +185,22 @@ Real constraints to know:
 1. **File count** — one third of BigEarthNet can mean **tens of thousands of PNGs**. The website upload of individual files is the failure mode. Folder/CLI upload is fine.
 2. **Size** — Kaggle datasets allow large uploads (many GB). A 2–6 GB converted pack is normal. Stay on a stable network; resume if the CLI drops.
 3. **Mac extras** — Finder can add `.DS_Store`. Harmless. Do not upload the raw 20 GB GeoTIFF trees, only `ben_vqa_third`.
-4. **Training** — Unsloth does **not** need a zip. It needs `train.jsonl` + image folders on `/kaggle/input/...`.
+4. **Training** — `train_classifier.py` does **not** need a zip. It needs `train.jsonl` + image folders on `/kaggle/input/...`.
 5. **Do not zip if you then upload that zip as the only file** unless you unzip it in the notebook. Folder/CLI upload avoids that extra step.
 
 So: skip local compression. Upload the output folder with the CLI (or the website folder picker).
 
 ---
 
-## RSVQA (test only, separate)
+## Evaluation split
 
-Download RSVQA-LR **test** from https://rsvqa.sylvainlobry.com/ and upload as
-a second Kaggle Dataset. Do not mix into training.
+No separate download needed. `train_classifier.py` and `evaluate_classifier.py`
+both derive the held-out split by hashing image paths, so the same patches are
+excluded from training and used for scoring on every run and every machine.
 
 ## After this → train on Kaggle
 
-See `../kaggle_unsloth_train.md` for copy-paste Unsloth notebook cells.
+Upload this folder as a Kaggle Dataset, then open
+`../notebooks/kaggle_train_classifier.ipynb`. See `../README.md` for the full
+pipeline: the classifier reads the `category: "multi-label"` rows of
+`train.jsonl`, and Qwen2.5 phrases its predictions at serve time.

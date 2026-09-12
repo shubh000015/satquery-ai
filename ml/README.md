@@ -1,161 +1,169 @@
-# SatQuery AI — model fine-tuning (SIH26167 task #2)
+# SatQuery ML — land-cover classifier + Qwen2.5 answer layer
 
-This folder adapts a vision-language model to remote sensing and plugs it into
-the agent backend. It is the piece SIH26167 explicitly requires: *"adapt or
-fine-tune at least one model"* on RS data. Everything else (agent, evidence,
-audit trail) is already shipped in `backend/`.
+Two stages, with a clean split of responsibility:
 
-## The approach, in one paragraph
+| Stage | What it does | Output |
+|---|---|---|
+| **1. Land-cover classifier** | Looks at the image. A single network handles both Sentinel-1 (SAR) and Sentinel-2 (optical) patches and predicts which of the 19 BigEarthNet classes are present. | Labels + a score per class |
+| **2. Qwen2.5 answer layer** | Never sees the image. Takes stage 1's labels and the analyst's question, and writes the reply. | A sentence or two |
 
-We fine-tune **Qwen2.5-VL-3B-Instruct** with **QLoRA**: the base model is
-loaded in 4-bit (NF4) so it fits a free 16 GB GPU, and small **LoRA adapters**
-(r=16, α=32) are trained on the language decoder's attention projections
-(q/k/v/o) while the **vision encoder stays frozen**. This is the configuration
-recent RS-VLM papers converged on.
+The reason for the split is reliability. A vision-language model asked to answer
+directly will happily describe a river that is not there, and you cannot tell
+from the output whether it looked or guessed. Here every claim in the answer
+traces back to a number the classifier produced, the yes/no verdict is decided
+by thresholded classifier scores rather than by the language model, and the
+confidence we report to the UI is the classifier's own probability. If Qwen
+disagrees with the verdict it is overridden (`verbalizer.py`), and if the LLM
+cannot load at all the endpoint still answers from a template.
 
-**Training data is BigEarthNet** (the adaptation dataset named in SIH26167):
-each Sentinel-2 patch carries multi-label land-cover classes, which
-`prepare_data.py bigearthnet` converts into instruction pairs — "which
-land-cover classes are present?" plus balanced yes/no presence questions.
-This mirrors how the official RSVQAxBEN benchmark ("RSVQA meets BigEarthNet")
-was built. **RSVQA-LR is held out for evaluation only.** RSICD captions can
-optionally be mixed into training for richer language. The result is a
-~100–200 MB adapter file, not a new model: at inference we load the public
-base model plus our adapter.
+It is also the practical choice: a ResNet-50 multi-label head trains to a useful
+accuracy on a free Kaggle T4 in a few hours, where end-to-end VLM fine-tuning on
+the same hardware does not.
 
-Why not full fine-tuning? A 3B model in fp16 needs ~40 GB+ with optimizer
-states. QLoRA gets ~equivalent task performance on a free T4, and the small
-adapter is trivial to share between teammates.
+## What we trained, and what we reuse
 
-## Where to run it
+Worth being precise about, because judges ask.
 
-| Option | Hardware | Cost | Verdict |
-|---|---|---|---|
-| **Kaggle Notebooks** | T4/P100 16 GB | free, **30 h/week guaranteed** | **Recommended.** Predictable quota, 9–12 h sessions, phone verification needed |
-| Google Colab Free | T4 16 GB | free, ~15–30 h/week (variable) | Good backup; disconnects on idle ~90 min |
-| Friend's laptop | needs **NVIDIA RTX, ≥ 8 GB VRAM** (3060/4060+) | free | Works for the 3B model. AMD/Intel/Mac GPUs will NOT work (bitsandbytes needs CUDA). On Windows prefer WSL2 |
-| Rented GPU (RunPod/Lightning) | RTX 4090 / A10 | ~$0.3–0.5/h | Only if quotas run out; a full run is ≤ $3 |
+- **We train:** the land-cover classifier — all layers, on BigEarthNet S1+S2
+  patches, with a randomly initialised 19-class multi-label head. Starting from
+  ImageNet-pretrained ResNet weights is the standard practice for remote-sensing
+  classification, since low-level ImageNet features transfer well to overhead
+  imagery. `train_classifier.py` is the whole recipe and
+  `evaluate_classifier.py` produces the numbers.
+- **We reuse as-is:** `Qwen/Qwen2.5-7B-Instruct`, frozen, prompted, not trained.
+  It is a phrasing layer, not the thing being evaluated.
+- **We built:** the dataset itself — `dataset_builder/build_bigearthnet_vqa.py`
+  pairs each Sentinel-2 patch with its Sentinel-1 twin via `metadata.parquet`,
+  renders both to PNG (optical from B04/B03/B02, SAR false-colour from
+  VV/VH/|VV-VH|), and writes the labels.
 
-Time estimates for the default run (RSVQA-LR subsampled to ~12k QA pairs,
-1 epoch, 3B model): **~3–5 h on T4**, ~2–4 h on P100, ~1–2 h on a 4090.
+## Layout
 
-**Recommended plan:** train on Kaggle (it cannot serve an API), download the
-adapter, then **serve it from the friend's laptop** (inference only needs
-~4 GB VRAM) or any machine with an NVIDIA GPU on the demo network.
+```
+ml/
+  satquery_ml/
+    labels.py        BigEarthNet-19 vocabulary, short names, coarse groups
+    dataset.py       train.jsonl -> multi-label tensors, deterministic split
+    model.py         ResNet backbone + modality-conditioned 19-class head
+    metrics.py       mAP, micro/macro F1, per-class threshold tuning
+    inference.py     image -> Prediction (the grounded facts)
+    verbalizer.py    Prediction + question -> answer, via Qwen2.5
+  train_classifier.py
+  evaluate_classifier.py
+  serve.py           FastAPI, speaks the backend's existing endpoint contract
+  notebooks/
+    kaggle_train_classifier.ipynb
+    kaggle_serve_tunnel.ipynb
+  dataset_builder/   builds the Kaggle dataset from raw BigEarthNet (CPU only)
+```
 
-## Step by step
+## 1. Data
 
-### 0. Smoke test the loop first (30 min, do this before spending GPU hours)
+The dataset is already on Kaggle as `knayamket/bigearthnet-vqa` (S1+S2) — attach
+it to the notebook and skip this step. To rebuild it from the raw archives, see
+`dataset_builder/README.md`.
+
+Stage 1 reads the `category: "multi-label"` rows of `train.jsonl`, which carry
+the full label set for each patch. The presence and modality rows are QA
+phrasings of the same ground truth and are ignored here.
+
+One caveat the loader handles for you: the builder joined labels with `", "`,
+and four class names contain commas themselves (`Transitional woodland, shrub`
+and friends). `labels.parse_label_string` recovers the real label set by
+longest-match instead of splitting on the separator.
+
+## 2. Train
+
+Smoke-test the loop before spending GPU hours — this should run in a couple of
+minutes and the loss should fall:
 
 ```bash
 pip install -r requirements.txt
-python prepare_data.py smoke --out data/smoke.jsonl
-python train.py --train data/smoke.jsonl --out runs/smoke --epochs 2
-python evaluate.py --data data/smoke.jsonl --limit 50 --adapter runs/smoke/adapter
+python train_classifier.py --data /kaggle/input/bigearthnet-vqa \
+    --out runs/smoke --limit 400 --epochs 1 --batch-size 8
 ```
 
-If accuracy on the synthetic tiles jumps to ~1.0, the pipeline is correct.
-
-### 1. Get the data
-
-- **BigEarthNet (training):** https://bigearth.net/ → `BigEarthNet-S2` archive
-  + `metadata.parquet`. The full archive is ~66 GB — **you do not need all of
-  it.** Extract a handful of the 115 tile folders (a few GB, tens of thousands
-  of patches); the converter simply skips metadata rows whose patches are not
-  extracted, and `--max-patches` caps the rest.
-- **RSVQA-LR (evaluation only):** https://rsvqa.sylvainlobry.com/ →
-  `Images_LR.zip` and the **test** questions/answers JSONs. (~200 MB)
-- RSICD (optional extra training text): Kaggle dataset
-  `thedevastator/rsicd-image-caption-dataset`.
-
-On Kaggle, upload these as a private Dataset once and attach it to your
-notebook — no re-downloading every session.
-
-### 2. Build the JSONL splits
+Then the real run (T4, roughly 40 min/epoch on ~120k patches):
 
 ```bash
-# TRAIN: BigEarthNet labels -> instruction pairs (2 per patch)
-python prepare_data.py bigearthnet --images BigEarthNet-S2 \
-    --metadata metadata.parquet --split train \
-    --out data/train.jsonl --max-patches 6000
-
-# TEST: RSVQA-LR, never seen during training
-python prepare_data.py rsvqa --images Images_LR \
-    --questions LR_split_test_questions.json --answers LR_split_test_answers.json \
-    --out data/test.jsonl
+python train_classifier.py \
+    --data /kaggle/input/bigearthnet-vqa \
+    --out /kaggle/working/landcover \
+    --epochs 6 --batch-size 64
 ```
 
-6000 patches → 12k pairs keeps the first run inside one Kaggle session. Scale
-up (or concatenate RSICD JSONL) once the first adapter works.
+The loop checkpoints on a wall-clock timer (`--save-every-minutes`, default 10)
+and auto-resumes from `last.ckpt`, so a killed Kaggle session costs you minutes
+rather than the run. `classifier.pt` is rewritten whenever validation macro F1
+improves, and carries its own tuned per-class thresholds and metrics.
 
-### 3. Baseline score, train, re-score
+Use `notebooks/kaggle_train_classifier.ipynb` to do all of this on Kaggle.
+
+## 3. Evaluate
 
 ```bash
-python evaluate.py --data data/test.jsonl --limit 500 --out runs/base_report.json
-python train.py --train data/train.jsonl --out runs/ben-lora
-python evaluate.py --data data/test.jsonl --limit 500 \
-    --adapter runs/ben-lora/adapter --out runs/tuned_report.json
+python evaluate_classifier.py \
+    --data /kaggle/input/bigearthnet-vqa \
+    --checkpoint /kaggle/working/landcover/classifier.pt \
+    --out /kaggle/working/landcover/eval_report.json
 ```
 
-The two report files are your before/after evidence for the judges: the model
-never saw RSVQA during training, so any gain on it demonstrates genuine
-adaptation to remote sensing rather than memorisation of the test benchmark.
+The split is reproduced by hashing image paths exactly as training did, so these
+patches were never trained on. The report gives mAP, micro/macro F1, precision,
+recall, per-class AP with support counts, and a separate optical-vs-SAR
+breakdown — SAR is the harder modality and averaging the two hides that.
 
-### 4. Serve the adapter and wire it into SatQuery
+Multi-label land cover is not a single-answer task, so read mAP and macro F1
+rather than exact-match accuracy, which is punishing by construction.
 
-On the machine with the GPU (adapter folder copied from Kaggle output):
+## 4. Serve
 
 ```bash
-python serve.py --adapter runs/ben-lora/adapter --port 8100
+python serve.py --checkpoint runs/landcover/classifier.pt --port 8100
 ```
 
-Then in `backend/.env` on the machine running the SatQuery backend:
+Endpoints:
+
+- `GET /health` — model label, the classifier's stored metrics, whether the LLM loaded
+- `POST /v1/vqa` — `{question, imageB64, task, modality?}` → `{answer, confidence, model, elapsedMs, oneWord, labels, modality}`
+- `POST /v1/classify` — stage 1 only, every class score. Useful for the demo: it shows what the classifier said before the language layer touched it.
+
+`--no-llm` starts in seconds with template phrasing, which is the right setting
+while you are debugging the wiring. `oneWord` is the classifier's terse answer
+(`yes`, `no`, or the top class) alongside the full sentence.
+
+Kaggle cannot expose a port, so `notebooks/kaggle_serve_tunnel.ipynb` runs this
+behind a cloudflared tunnel and prints the public URL.
+
+## 5. Wire it into the backend
+
+The endpoint contract is unchanged, so `backend/` needs no edits. In
+`backend/.env`:
 
 ```
-SATQUERY_VLM_ENDPOINT=http://<gpu-machine-ip>:8100
+SATQUERY_VLM_ENDPOINT=https://<your-tunnel>.trycloudflare.com
 ```
 
-Restart the backend and check:
+Restart the backend, then check:
 
 - `GET /api/health` → `weightsWired: 1`
-- `GET /api/registry` → the VQA and captioning rows show **wired**
-- Ask a question on an uploaded scene → the answer comes from the model, the
-  masks/metrics still come from the deterministic stack, and
-  `inferenceBackend` in the response names the endpoint.
+- `GET /api/registry` → the VQA and captioning rows read **wired**
+- Ask a question about an uploaded scene → the answer comes from this pipeline,
+  while masks and area metrics still come from the deterministic stack in
+  `backend/app/services/analysis.py`
 
-If the endpoint is down or errors, the backend automatically falls back to the
-heuristic baseline and says so in the trace — the demo cannot hard-fail.
+If the endpoint is unreachable the backend falls back to its heuristic baseline
+and says so in the trace, so a dead tunnel degrades the demo instead of breaking it.
 
-## Kaggle notebook cheat-sheet
+## Notes and limits
 
-```python
-# Cell 1 — code + deps (repo is private: use a token, or upload ml/ as a Dataset)
-!pip -q install peft bitsandbytes qwen-vl-utils accelerate
-
-# Cell 2 — data (attached Kaggle Dataset appears under /kaggle/input)
-!python prepare_data.py bigearthnet \
-   --images /kaggle/input/bigearthnet-subset/BigEarthNet-S2 \
-   --metadata /kaggle/input/bigearthnet-subset/metadata.parquet \
-   --out data/train.jsonl --max-patches 6000
-
-# Cell 3 — train (T4: ~3-5 h)
-!python train.py --train data/train.jsonl --out /kaggle/working/ben-lora
-
-# Cell 4 — zip the adapter for download
-!cd /kaggle/working && zip -r ben-lora-adapter.zip ben-lora/adapter
-```
-
-Turn on **Settings → Accelerator → GPU T4 x2 (or P100)** and **Persistence →
-Files** before running.
-
-## Scaling up later
-
-- **7B model:** `--model Qwen/Qwen2.5-VL-7B-Instruct` still fits a T4 with the
-  same script (slower, ~2-3× training time). Do this only after the 3B run is
-  scored.
-- **Change VQA (CDVQA):** same recipe, two images per message — extend the
-  collator's message builder with a second `{"type": "image"}` entry and point
-  `SATQUERY_CHANGE_ENDPOINT` at a second serve instance.
-- **Grounding (DIOR-RSVG / VRSBench):** train with box-coordinate answers in
-  the text, then implement `run_endpoint` on `GroundingTool` the same way it
-  is done for VQA/caption in `backend/app/tools/single_image.py`.
+- The modality flag matters: pass `modality` in the request when you know it.
+  Otherwise `inference.detect_modality` guesses from saturation and from the
+  `B ≈ |R−G|` signature of our own SAR renders, which is reliable for our
+  dataset but is only a heuristic for arbitrary uploads.
+- BigEarthNet is European. Applied to Indian scenes the class vocabulary still
+  broadly holds, but the score calibration will drift — worth saying out loud
+  rather than being caught by it.
+- Object questions ("how many ships?") are out of scope for a patch-level
+  classifier. The backend answers those from its own baseline and labels them as
+  unverified; a detection head would be the honest way to support them.
