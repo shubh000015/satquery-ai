@@ -103,11 +103,19 @@ adaptation to remote sensing rather than memorisation of the test benchmark.
 
 ### 4. Serve the adapter and wire it into SatQuery
 
-On the machine with the GPU (adapter folder copied from Kaggle output):
+The Kaggle notebook `ml/kaggle_train_unsloth.ipynb` produces
+`ben-lora/adapter/` — a directory with `adapter_config.json` +
+`adapter_model.safetensors` + tokenizer files. Download `ben-lora-adapter.zip`
+from the Kaggle output tab and extract it wherever suits you. Then on any
+NVIDIA machine (Linux, WSL2, or Windows) with the adapter folder present:
 
 ```bash
-python serve.py --adapter runs/ben-lora/adapter --port 8100
+python ml/serve.py --adapter path/to/ben-lora/adapter --port 8100
 ```
+
+`serve.py` reads `adapter_config.json` to pick the base model automatically —
+you don't need to pass `--model` for adapters trained with the Unsloth notebook
+(they default to `unsloth/Qwen2.5-VL-3B-Instruct-bnb-4bit`).
 
 Then in `backend/.env` on the machine running the SatQuery backend:
 
@@ -125,6 +133,49 @@ Restart the backend and check:
 
 If the endpoint is down or errors, the backend automatically falls back to the
 heuristic baseline and says so in the trace — the demo cannot hard-fail.
+
+### 4b. Test locally like a chatbot (recommended before demo day)
+
+`ml/chat.py` is an interactive REPL that eats **BigEarthNet GeoTIFFs directly**
+— it reads VV/VH bands and renders the exact pseudo-RGB the model saw during
+training (`R=VV, G=VH, B=|VV−VH|`, 2/98 percentile stretch), so you can sanity
+check quality without spinning up the frontend.
+
+Two ways to run it:
+
+```bash
+# A) Talk to a running serve.py (best on a shared GPU machine)
+python ml/serve.py --adapter path/to/ben-lora/adapter --port 8100
+python ml/chat.py  --server http://127.0.0.1:8100 \
+                   --image path/to/S1B_IW_GRDH_.../S1B_IW_GRDH_..._61_15   # patch folder
+
+# B) Boot the model in-process (no HTTP; simplest on a laptop with a GPU)
+python ml/chat.py --adapter path/to/ben-lora/adapter \
+                  --image path/to/patch.png
+```
+
+The `--image` argument accepts:
+
+| Input | What we do |
+|---|---|
+| a BigEarthNet-S1 patch folder (`*_VV.tif` + optional `*_VH.tif`) | render the training-time pseudo-RGB |
+| a BigEarthNet-S2 patch folder (`*_B04.tif` + `*_B03.tif` + `*_B02.tif`) | render a true-colour composite |
+| a single `.tif` / `.tiff` file | treat as VV grayscale, percentile-stretch, replicate to RGB |
+| a `.png` / `.jpg` | use as-is (resized to 224x224 to match training) |
+
+Inside the REPL:
+
+```
+you> which land-cover classes are present?
+bot> Broad-leaved forest, mixed forest, transitional woodland/shrub.
+     confidence 0.87 · 2410 ms
+you> /image path/to/another_patch
+you> is there any built-up area?
+bot> No, this scene is fully natural land cover.
+```
+
+Slash commands: `/image <path>`, `/reset`, `/system <text>`, `/save log.jsonl`,
+`/help`, `/quit`.
 
 ## Kaggle notebook cheat-sheet
 
