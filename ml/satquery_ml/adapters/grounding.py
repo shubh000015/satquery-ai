@@ -18,7 +18,7 @@ import re
 import numpy as np
 
 from ..facts import Evidence, clamp_confidence
-from .base import Adapter, AdapterUnavailable, move_batch, place_module
+from .base import Adapter, AdapterUnavailable, force_float32, move_batch, place_module
 
 BOX_THRESHOLD = 0.25
 TEXT_THRESHOLD = 0.20
@@ -97,11 +97,14 @@ class GroundingAdapter(Adapter):
         # float32, then `F.linear` dies with "mat1 Float, mat2 BFloat16".
         # The detector is ~1 GB in fp32 — it fits next to SAM 2 on a T4.
         loaded = AutoModelForZeroShotObjectDetection.from_pretrained(
-            detector_id, dtype=torch.float32
+            detector_id, torch_dtype=torch.float32
         )
         self.model, self.dtype = place_module(
             loaded.eval(), self.device, dtype=torch.float32
         )
+        leftover = force_float32(self.model)
+        if leftover != (torch.float32,):
+            print(f"WARNING: Grounding DINO still has dtypes {leftover} after fp32 cast", flush=True)
 
         # SAM 2 is optional: boxes alone still answer a grounding query, so a
         # missing sam2 package degrades the output instead of failing the task.
@@ -133,6 +136,13 @@ class GroundingAdapter(Adapter):
         import torch
         from PIL import Image
 
+        # Recast in case this adapter was loaded earlier in the Kaggle kernel
+        # while weights were still bf16. Pulling new code does not change VRAM.
+        leftover = force_float32(self.model)
+        self.dtype = torch.float32
+        if leftover != (torch.float32,):
+            print(f"WARNING: Grounding DINO dtypes after recast: {leftover}", flush=True)
+
         image = Image.fromarray(np.asarray(rgb, dtype=np.uint8), mode="RGB")
         prompt = build_prompt(query)
 
@@ -140,6 +150,7 @@ class GroundingAdapter(Adapter):
             self.processor(images=image, text=prompt, return_tensors="pt"),
             self.device,
             self.model,
+            dtype=torch.float32,
         )
         # Autocast would put the vision path in bf16/fp16 and leave the text
         # tower in fp32 — the same mixed-dtype crash as a half-cast load.

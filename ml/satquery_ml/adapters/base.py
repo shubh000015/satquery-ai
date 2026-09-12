@@ -113,6 +113,28 @@ def torch_dtype(device: str):
     return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
 
 
+def force_float32(module):
+    """Cast every floating parameter and buffer to fp32, including HF leftovers.
+
+    `module.to(dtype=float32)` and `from_pretrained(dtype=float32)` both miss
+    pieces of Grounding DINO: BERT LayerNorms, text-enhancer linears, and
+    `config.torch_dtype` can stay bf16. `_apply` walks the whole tree.
+    Returns the remaining floating dtypes — should be `(torch.float32,)`.
+    """
+    import torch
+
+    def _cast(tensor):
+        if torch.is_tensor(tensor) and tensor.is_floating_point() and tensor.dtype != torch.float32:
+            return tensor.float()
+        return tensor
+
+    module._apply(_cast)
+    config = getattr(module, "config", None)
+    if config is not None and hasattr(config, "torch_dtype"):
+        config.torch_dtype = torch.float32
+    return tuple(sorted({p.dtype for p in module.parameters() if p.is_floating_point()}, key=str))
+
+
 def place_module(module, device: str, dtype=None):
     """Move a module onto `device` in a single compute dtype.
 
@@ -161,15 +183,20 @@ def batch_tensor(array, device: str, module):
     )
 
 
-def move_batch(batch, device: str, module) -> dict:
-    """Move a processor batch onto `device` and cast floats to the model dtype.
+def move_batch(batch, device: str, module, dtype=None) -> dict:
+    """Move a processor batch onto `device` and cast floats to `dtype`.
 
     HuggingFace processors always emit float32 `pixel_values`. `.to(device)`
     does not change that, so a bf16 Grounding DINO / VLM then dies with
     `Input type (float) and bias type (c10::BFloat16) should be the same`.
     Integer tokens (`input_ids`, masks) stay integers.
+
+    Pass `dtype` to override `module_dtype` — Grounding DINO must force
+    float32, because HuggingFace `model.dtype` can still report bf16 after a
+    partial cast.
     """
-    dtype = module_dtype(module)
+    if dtype is None:
+        dtype = module_dtype(module)
     moved = {}
     for key, value in batch.items():
         if not hasattr(value, "to"):

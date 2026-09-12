@@ -25,6 +25,7 @@ from satquery_ml.adapters.base import (  # noqa: E402
     Adapter,
     AdapterUnavailable,
     batch_tensor,
+    force_float32,
     module_dtype,
     move_batch,
     place_module,
@@ -69,6 +70,36 @@ def test_move_batch_casts_pixels_but_leaves_token_ids_alone():
     assert moved["attention_mask"].dtype == torch.long
     # Same crash the notebook hit: float32 pixels into a bf16 conv.
     conv(moved["pixel_values"])
+
+
+def test_force_float32_converts_every_parameter_and_buffer():
+    import torch
+
+    class Mixed(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.lin = torch.nn.Linear(4, 4)
+            self.register_buffer("scale", torch.ones(4, dtype=torch.bfloat16))
+
+        def forward(self, x):
+            return self.lin(x) * self.scale
+
+    model = Mixed().to(dtype=torch.bfloat16)
+    leftover = force_float32(model)
+    assert leftover == (torch.float32,)
+    assert model.lin.weight.dtype == torch.float32
+    assert model.scale.dtype == torch.float32
+    output = model(torch.ones(2, 4))
+    assert output.dtype == torch.float32
+
+
+def test_move_batch_accepts_an_explicit_dtype():
+    import torch
+
+    conv = torch.nn.Conv2d(3, 4, kernel_size=1).to(dtype=torch.bfloat16)
+    batch = {"pixel_values": torch.ones(1, 3, 8, 8, dtype=torch.float32)}
+    moved = move_batch(batch, "cpu", conv, dtype=torch.float32)
+    assert moved["pixel_values"].dtype == torch.float32
 
 
 def test_place_module_can_force_float32_even_when_weights_are_bf16():
