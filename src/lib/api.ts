@@ -145,13 +145,19 @@ export async function fetchRegistry() {
 
 export async function uploadAssets(
   files: File[],
-  opts?: { sessionId?: string | null; mode?: InputMode; benchmarkDataset?: string }
+  opts?: {
+    sessionId?: string | null;
+    mode?: InputMode;
+    benchmarkDataset?: string;
+    expect?: "optical" | "sar" | "fusion";
+  }
 ): Promise<UploadResult> {
   const form = new FormData();
   files.forEach((file) => form.append("files", file, file.name));
   if (opts?.sessionId) form.append("session_id", opts.sessionId);
   if (opts?.mode) form.append("mode", opts.mode);
   if (opts?.benchmarkDataset) form.append("benchmark_dataset", opts.benchmarkDataset);
+  if (opts?.expect) form.append("expect", opts.expect);
 
   const result = await request<UploadResult>("/api/assets", { method: "POST", body: form });
   return {

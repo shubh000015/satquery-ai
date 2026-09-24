@@ -70,8 +70,10 @@ def scene_png_b64(scene: Scene, max_edge: int = _MAX_EDGE) -> str:
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
-def band_names_for(modality: str, band_count: int) -> tuple[str, ...]:
+def band_names_for(modality: str, band_count: int, named: tuple[str, ...] | None = None) -> tuple[str, ...]:
     """Sensor band names for what we actually have. Never more than we have."""
+    if named:
+        return named[:band_count]
     if modality == "sar":
         return _SAR_NAMES[: max(1, min(band_count, 2))]
     return _OPTICAL_NAMES[: max(1, min(band_count, 4))]
@@ -84,7 +86,7 @@ def scene_bands(scene: Scene, modality: str, max_edge: int = _BAND_EDGE) -> dict
     stretch destroys the ratios between bands, which is exactly the signal a
     multispectral classifier reads.
     """
-    names = band_names_for(modality, scene.bands)
+    names = band_names_for(modality, scene.bands, scene.band_names)
     data = scene.reflectance[:, :, : len(names)].astype(np.float32)
 
     if max(scene.height, scene.width) > max_edge:
@@ -158,6 +160,41 @@ def probe_ml(endpoint: str, timeout: float = 4.0) -> dict | None:
             return json.loads(response.read().decode("utf-8"))
     except Exception:
         return None
+
+
+_REACHABLE: dict[str, tuple[float, bool]] = {}
+_REACHABLE_TTL_S = 20.0
+
+
+def endpoint_reachable(endpoint: str, timeout: float = 2.5) -> bool:
+    """True when the host answers at all.
+
+    A dead Cloudflare tunnel used to block every query for the full 180s
+    POST timeout and then surface as an error. A TCP failure is 'down'.
+    An HTTP error still counts as up, because the stub servers in tests
+    answer POST only and return 501 for GET /health.
+    """
+    import time
+
+    now = time.monotonic()
+    cached = _REACHABLE.get(endpoint)
+    if cached is not None and now - cached[0] < _REACHABLE_TTL_S:
+        return cached[1]
+
+    request = urllib.request.Request(
+        f"{endpoint.rstrip('/')}/health",
+        headers=_headers(),
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout):
+            ok = True
+    except urllib.error.HTTPError:
+        ok = True
+    except Exception:
+        ok = False
+    _REACHABLE[endpoint] = (now, ok)
+    return ok
 
 
 def _reply(body: dict, *keep: str) -> EndpointReply:

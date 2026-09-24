@@ -14,6 +14,7 @@ from typing import Any
 
 from app.agent import registry
 from app.core.config import Settings
+from app.tools.endpoint_client import endpoint_reachable
 from app.schemas.agent import Box, CompareMode, Layer, Mask, Metric, TaskKind
 from app.schemas.imagery import Asset, InputMode, ValidationReport
 from app.services.raster import Scene
@@ -94,6 +95,13 @@ class Tool(ABC):
 
     def run(self, ctx: ToolContext) -> ToolOutput:
         endpoint = registry.endpoint_for(self.model_key, ctx.settings)
+        if endpoint and not endpoint_reachable(endpoint):
+            output = self.run_baseline(ctx)
+            output.role = self.role
+            output.notes.append(
+                f"{self.name}: specialist server is not reachable; ran the local analysis."
+            )
+            return output
         if endpoint:
             try:
                 output = self.run_endpoint(ctx, endpoint)

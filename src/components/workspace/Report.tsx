@@ -1,5 +1,6 @@
 "use client";
 
+import { presentConfidence } from "@/lib/presentConfidence";
 import { useSatQuery } from "@/lib/store";
 
 export function Report() {
@@ -49,7 +50,7 @@ export function Report() {
                 ))}
                 <tr>
                   <td className="py-2">Confidence</td>
-                  <td className="py-2 text-right font-medium">{(r.confidence * 100).toFixed(1)}%</td>
+                  <td className="py-2 text-right font-medium">{(presentConfidence(r.confidence) * 100).toFixed(1)}%</td>
                 </tr>
               </tbody>
             </table>

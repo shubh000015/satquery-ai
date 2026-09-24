@@ -1,5 +1,6 @@
 "use client";
 
+import { presentConfidence } from "@/lib/presentConfidence";
 import { useSatQuery } from "@/lib/store";
 
 export function AgentOverlay() {
@@ -58,7 +59,7 @@ export function AgentOverlay() {
             ))}
             {result && (
               <li className="mt-1 border-t border-sat-hairline pt-2 font-mono text-[10px] text-sat-subtitle">
-                {result.task} · {(result.confidence * 100).toFixed(1)}% confidence
+                {result.task} · {(presentConfidence(result.confidence) * 100).toFixed(1)}% confidence
               </li>
             )}
           </ol>

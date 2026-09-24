@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     analysis_max_edge: int = 512
     max_upload_bytes: int = 200 * 1024 * 1024
     max_assets_per_query: int = 2
+    # Band planes of one scene (12 optical + 2 SAR, or two 12-band dates).
+    max_upload_files: int = 24
 
     # SIH26167 allows PNG/JPEG only for the prescribed benchmark datasets. Strict
     # mode rejects them outright; the default downgrades it to a warning so the

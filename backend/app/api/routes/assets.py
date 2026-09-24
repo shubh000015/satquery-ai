@@ -18,43 +18,45 @@ _VALID_MODES = {"single", "cross-modal", "bi-temporal"}
 
 @router.post("", response_model=UploadResponse)
 async def upload_assets(
-    files: Annotated[list[UploadFile], File(description="One scene, or a pair")],
+    files: Annotated[list[UploadFile], File(description="Band planes of one or two scenes")],
     session_id: Annotated[str | None, Form()] = None,
     benchmark_dataset: Annotated[str | None, Form()] = None,
     mode: Annotated[str | None, Form()] = None,
+    expect: Annotated[str | None, Form()] = None,
 ) -> UploadResponse:
-    """Accept 1–2 scenes, derive their metadata, and report compatibility."""
+    """Accept band planes or cubes, stack them into at most two scenes."""
     settings = get_settings()
     store = get_asset_store()
     sessions = get_session_store()
 
     if not files:
         raise HTTPException(status_code=422, detail="No files supplied.")
-    if len(files) > settings.max_assets_per_query:
+    if len(files) > settings.max_upload_files:
         raise HTTPException(
             status_code=422,
             detail=(
-                f"{len(files)} files supplied. The defined input scope is a single image or a pair "
-                f"(max {settings.max_assets_per_query})."
+                f"{len(files)} files supplied. Optical is 12 band TIFFs, SAR is VV+VH "
+                f"(max {settings.max_upload_files} files, {settings.max_assets_per_query} scenes)."
             ),
         )
     if mode is not None and mode not in _VALID_MODES:
         raise HTTPException(status_code=422, detail=f"Unknown mode '{mode}'.")
+    if expect is not None and expect not in {"optical", "sar", "fusion"}:
+        raise HTTPException(status_code=422, detail=f"Unknown expect '{expect}'.")
 
     session = sessions.get_or_create(session_id)
     stored: list[Asset] = []
+    stack_notes: list[str] = []
     try:
+        payloads: list[tuple[str, bytes]] = []
         for index, upload in enumerate(files):
-            payload = await upload.read()
-            stored.append(
-                store.save(
-                    upload.filename or f"scene-{index}",
-                    payload,
-                    role="primary" if index == 0 else "secondary",
-                    session_id=session.id,
-                    benchmark_dataset=benchmark_dataset,
-                )
-            )
+            payloads.append((upload.filename or f"scene-{index}", await upload.read()))
+        stored, stack_notes = store.save_uploads(
+            payloads,
+            session_id=session.id,
+            benchmark_dataset=benchmark_dataset,
+            expect=expect,  # type: ignore[arg-type]
+        )
     except AgentError as exc:
         for asset in stored:  # do not leave half an upload behind
             store.delete(asset.id)
@@ -62,6 +64,9 @@ async def upload_assets(
 
     mode_hint: InputMode | None = mode  # type: ignore[assignment]
     report = validator.validate(stored, mode_hint, settings)
+    if stack_notes:
+        extra = " ".join(stack_notes)
+        report = report.model_copy(update={"summary": f"{extra} {report.summary}".strip()})
     sessions.attach_assets(session.id, [a.id for a in stored], report.mode)
 
     return UploadResponse(

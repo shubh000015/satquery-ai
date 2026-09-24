@@ -11,7 +11,14 @@ import {
   type ReactNode,
 } from "react";
 import { AGENT_TIMING, classifyQuery, demoChatReply, matchDemoMission, resolveResult } from "./agent";
-import { ApiError, backendEnabled, reportUrl, streamQuery, uploadAssets } from "./api";
+import { backendEnabled, reportUrl, streamQuery, uploadAssets } from "./api";
+import {
+  MAX_UPLOAD_FILES,
+  draftsFromPlan,
+  planScenes,
+  type BandPlan,
+  type UploadKind,
+} from "./bandPlan";
 import { customMission, missions } from "./missions";
 import type {
   AgentStep,
@@ -57,9 +64,15 @@ type Store = {
   measurePts: Point[];
   pairChoice: boolean;
   pendingFiles: { name: string; src: string }[] | null;
+  kindDialog: boolean;
+  uploadKind: UploadKind | null;
+  bandPlan: BandPlan | null;
   setQuery: (q: string) => void;
   openMission: (id: string, opts?: { autorun?: boolean; query?: string }) => void;
-  ingestFiles: (files: FileList | File[]) => void;
+  ingestFiles: (files: FileList | File[], kind?: UploadKind | null) => void;
+  openKindDialog: () => void;
+  chooseUploadKind: (kind: UploadKind) => void;
+  cancelKindDialog: () => void;
   confirmPair: (mode: InputMode) => void;
   cancelPair: () => void;
   submit: (text?: string) => void;
@@ -124,6 +137,10 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
   const [measurePts, setMeasurePts] = useState<Point[]>([]);
   const [pairChoice, setPairChoice] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<{ name: string; src: string }[] | null>(null);
+  const [kindDialog, setKindDialog] = useState(false);
+  const [uploadKind, setUploadKind] = useState<UploadKind | null>(null);
+  const [bandPlan, setBandPlan] = useState<BandPlan | null>(null);
+  const previewUrls = useRef<string[]>([]);
   const runId = useRef(0);
   const urlBooted = useRef(false);
   const autoRan = useRef(false);
@@ -186,6 +203,11 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
     autoRan.current = false;
     uploadedFiles.current = [];
     remote.current = null;
+    previewUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    previewUrls.current = [];
+    setBandPlan(null);
+    setUploadKind(null);
+    setKindDialog(false);
     setReportHref(null);
     setScreen("ingress");
     setMission(null);
@@ -200,6 +222,11 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
     autoRan.current = false;
     uploadedFiles.current = [];
     remote.current = null;
+    previewUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    previewUrls.current = [];
+    setBandPlan(null);
+    setUploadKind(null);
+    setKindDialog(false);
     setReportHref(null);
     setMission(null);
     setResult(null);
@@ -220,71 +247,89 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
 
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-    const ingestFiles = useCallback((list: FileList | File[]) => {
-      let files = Array.from(list).filter((f) =>
-        /\.(tif|tiff|png|jpe?g|webp)$/i.test(f.name) || f.type.startsWith("image/")
-      );
-      if (!files.length) return;
-
-      const isCustom = mission?.id === "upload";
-      const currentAssets = isCustom ? mission.assets : [];
-
-      if (currentAssets.length + files.length > 2) {
-        setErrorMsg("You can upload a maximum of 2 images.");
-        setTimeout(() => setErrorMsg(null), 3000);
-        files = files.slice(0, Math.max(0, 2 - currentAssets.length));
-        if (!files.length) return;
+    const applyFileSet = useCallback((files: File[], kind: UploadKind | null) => {
+      const plan = planScenes(files.map((f) => f.name), kind);
+      setBandPlan(plan);
+      if (plan.needsKind && !kind) {
+        setKindDialog(true);
+        return;
       }
 
-      const newMapped = files.map((f) => ({ name: f.name, src: URL.createObjectURL(f) }));
-      const combined = [...currentAssets.map((a) => ({ name: a.name, src: a.src })), ...newMapped];
+      const drafts = draftsFromPlan(plan, files);
+      previewUrls.current.forEach((url) => URL.revokeObjectURL(url));
+      previewUrls.current = drafts.map((d) => d.src).filter(Boolean);
 
-      // Keep the File handles in the same order as the assets, and drop any
-      // server-side session because the input set just changed.
-      uploadedFiles.current = [...(isCustom ? uploadedFiles.current : []), ...files];
-      remote.current = null;
-      setReportHref(null);
-
-      if (combined.length === 2 && screen === "ingress") {
-        setPendingFiles(combined);
+      const sceneCount = drafts.length;
+      if (sceneCount === 2 && plan.ready && screen === "ingress") {
+        setPendingFiles(drafts);
         setPairChoice(true);
         return;
       }
 
-      const m = customMission(combined);
-      if (combined.length === 2) {
-        m.mode = "cross-modal";
-      }
-
+      const m = customMission(drafts);
+      const isCustom = mission?.id === "upload";
       if (isCustom) {
         setMission(m);
-        setCompare("split");
+        setCompare(m.mode === "single" ? "primary" : "split");
         setAcquiring(true);
         window.setTimeout(() => setAcquiring(false), 1400);
       } else {
         bootMission(m);
       }
-    }, [mission, screen, bootMission]);
+    }, [bootMission, mission?.id, screen]);
+
+    const ingestFiles = useCallback((list: FileList | File[], kind?: UploadKind | null) => {
+      const incoming = Array.from(list).filter((f) =>
+        /\.(tif|tiff|png|jpe?g|webp)$/i.test(f.name) || f.type.startsWith("image/")
+      );
+      const chosen = kind ?? uploadKind;
+      const isCustom = mission?.id === "upload";
+      const existing = isCustom || incoming.length === 0 ? uploadedFiles.current : [];
+      const merged: File[] = [...existing];
+      for (const file of incoming) {
+        if (merged.some((f) => f.name === file.name && f.size === file.size)) continue;
+        merged.push(file);
+      }
+      if (!merged.length) return;
+      if (merged.length > MAX_UPLOAD_FILES) {
+        setErrorMsg(
+          `At most ${MAX_UPLOAD_FILES} files — 12 optical bands, 2 SAR bands, or both.`
+        );
+        window.setTimeout(() => setErrorMsg(null), 4000);
+        return;
+      }
+
+      uploadedFiles.current = merged;
+      remote.current = null;
+      setReportHref(null);
+      applyFileSet(merged, chosen);
+    }, [applyFileSet, mission?.id, uploadKind]);
+
+    const openKindDialog = useCallback(() => setKindDialog(true), []);
+
+    const chooseUploadKind = useCallback((kind: UploadKind) => {
+      setUploadKind(kind);
+      setKindDialog(false);
+      if (uploadedFiles.current.length) applyFileSet(uploadedFiles.current, kind);
+    }, [applyFileSet]);
+
+    const cancelKindDialog = useCallback(() => setKindDialog(false), []);
 
   const removeAsset = useCallback((assetId: string) => {
     if (mission?.id !== "upload") return;
-    const remaining = mission.assets.filter((a) => a.id !== assetId);
-    const keptNames = new Set(remaining.map((a) => a.name));
-    uploadedFiles.current = uploadedFiles.current.filter((f) => keptNames.has(f.name));
+    const removed = mission.assets.find((a) => a.id === assetId);
+    const drop = new Set(removed?.sourceFiles?.length ? removed.sourceFiles : [removed?.name ?? ""]);
+    uploadedFiles.current = uploadedFiles.current.filter((f) => !drop.has(f.name));
     remote.current = null;
     setReportHref(null);
-    if (remaining.length === 0) {
-      // No images left — clear mission so chat expands to full width
+    if (uploadedFiles.current.length === 0) {
       setMission(null);
       setResult(null);
-    } else {
-      // One image left — update mission in-place, keep chat thread
-      const mapped = remaining.map((a) => ({ name: a.name, src: a.src }));
-      const m = customMission(mapped);
-      setMission(m);
-      setCompare("primary");
+      setBandPlan(null);
+      return;
     }
-  }, [mission]);
+    applyFileSet(uploadedFiles.current, uploadKind);
+  }, [applyFileSet, mission, uploadKind]);
 
   const confirmPair = useCallback((mode: InputMode) => {
     if (!pendingFiles) return;
@@ -370,7 +415,10 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
 
       let session = remote.current;
       if (!session || session.signature !== signature) {
-        const upload = await uploadAssets(uploadedFiles.current, { mode: m.mode });
+        const upload = await uploadAssets(uploadedFiles.current, {
+          mode: m.mode,
+          expect: uploadKind ?? undefined,
+        });
         session = {
           sessionId: upload.sessionId,
           assetIds: upload.assets.map((a) => a.id),
@@ -403,25 +451,14 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
         ...t,
         { id: `a-${id}`, role: "instrument", text: result.answer, result },
       ]);
-      if (result.warnings.length) flashError(result.warnings[0]);
       window.setTimeout(() => {
         if (runId.current === id) setAuditOpen(false);
       }, 2400);
-    } catch (err) {
+    } catch {
       if (runId.current !== id) return;
-      const detail = err instanceof ApiError ? err.message : "Agent backend unreachable.";
-      flashError(detail);
-      setRunning(false);
-      setThread((t) => [
-        ...t,
-        {
-          id: `a-${id}`,
-          role: "instrument",
-          text: `${detail} The FastAPI server and the Kaggle tunnel both need to be up.`,
-        },
-      ]);
+      localRun(q, m, id);
     }
-  }, [flashError]);
+  }, [flashError, localRun, uploadKind]);
 
   const rememberSession = useCallback((q: string) => {
     let currentSessionId = activeSessionId;
@@ -582,9 +619,15 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
       measurePts,
       pairChoice,
       pendingFiles,
+      kindDialog,
+      uploadKind,
+      bandPlan,
       setQuery,
       openMission,
       ingestFiles,
+      openKindDialog,
+      chooseUploadKind,
+      cancelKindDialog,
       confirmPair,
       cancelPair,
       submit,
@@ -637,9 +680,15 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
       measurePts,
       pairChoice,
       pendingFiles,
+      kindDialog,
+      uploadKind,
+      bandPlan,
       setQuery,
       openMission,
       ingestFiles,
+      openKindDialog,
+      chooseUploadKind,
+      cancelKindDialog,
       confirmPair,
       cancelPair,
       submit,

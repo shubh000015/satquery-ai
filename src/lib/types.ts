@@ -24,6 +24,9 @@ export type Asset = {
   coords: string;
   format: string;
   crs?: string;
+  bandNames?: string[];
+  sourceFiles?: string[];
+  missingBands?: string[];
 };
 
 export type Box = {

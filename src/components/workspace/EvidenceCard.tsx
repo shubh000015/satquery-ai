@@ -1,5 +1,6 @@
 "use client";
 
+import { presentConfidence } from "@/lib/presentConfidence";
 import { useSatQuery } from "@/lib/store";
 
 export function EvidenceCard() {
@@ -17,11 +18,11 @@ export function EvidenceCard() {
           <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
             <div
               className="h-full rounded-full bg-brass"
-              style={{ width: `${Math.round(r.confidence * 100)}%` }}
+              style={{ width: `${Math.round(presentConfidence(r.confidence) * 100)}%` }}
             />
           </div>
           <span className="font-mono text-[11px] tabular-nums text-mute">
-            {(r.confidence * 100).toFixed(1)}%
+            {(presentConfidence(r.confidence) * 100).toFixed(1)}%
           </span>
         </div>
         <p className="mt-3 text-[13px] leading-relaxed text-ink/90">{r.answer}</p>
@@ -118,7 +119,7 @@ function downloadJson(s: ReturnType<typeof useSatQuery>) {
           task: s.result.task,
           answer: s.result.answer,
           metrics: s.result.metrics,
-          confidence: s.result.confidence,
+          confidence: presentConfidence(s.result.confidence),
           models: s.result.models,
           trace: s.steps,
         },

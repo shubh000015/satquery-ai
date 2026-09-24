@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import { ArrowUp, Activity, FileSearch, Layers, Paperclip, MessageSquare } from "lucide-react";
+import { presentConfidence } from "@/lib/presentConfidence";
+import { BandChecklist, BandKindDialog } from "./BandUpload";
 import { useSatQuery } from "@/lib/store";
 
 const DEMO_QUERIES = [
@@ -46,7 +48,10 @@ export function SatelliteQAPanel({ isMobile, isFullWidth }: { isMobile?: boolean
             </h3>
             <ul className="space-y-1.5 text-[12px] text-sat-subtitle">
               <li>
-                <strong>GeoTIFF</strong> / <strong>TIFF</strong> — supported
+                <strong>Optical</strong> — all 12 Sentinel-2 band GeoTIFFs (B01–B08, B8A, B09, B11, B12)
+              </li>
+              <li>
+                <strong>SAR</strong> — VV and VH as two GeoTIFFs
               </li>
               <li>
                 <strong>PNG</strong> / <strong>JPEG</strong> — prescribed public benchmark datasets only
@@ -54,13 +59,15 @@ export function SatelliteQAPanel({ isMobile, isFullWidth }: { isMobile?: boolean
             </ul>
           </div>
 
+          <BandChecklist onAdd={() => fileInputRef.current?.click()} />
+
           {!s.thread.length && !s.result && !s.running ? (
             <div className="flex flex-col text-sat-nav">
               <div className="mt-4 flex flex-col items-center text-center">
                 <MessageSquare size={32} className="mb-3 opacity-20" />
                 <p className="text-[13px] text-sat-heading">Ask in plain English.</p>
                 <p className="mt-1 text-[12px] opacity-70">
-                  Upload a scene first. The backend will route your question to the specialist models.
+                  Attach a full optical (12-band) or SAR (VV+VH) stack, then ask in English.
                 </p>
               </div>
               <div className="mt-6 flex flex-col gap-2">
@@ -107,14 +114,12 @@ export function SatelliteQAPanel({ isMobile, isFullWidth }: { isMobile?: boolean
                                 <span className="text-[13px] font-medium text-sat-heading">{m.value}</span>
                               </div>
                             ))}
-                            {msg.result.confidence ? (
-                              <div className="flex items-center justify-between border-b border-sat-hairline pb-2">
-                                <span className="text-[13px] text-sat-nav">Confidence Score</span>
-                                <span className="text-[13px] font-medium text-sat-green">
-                                  {(msg.result.confidence * 100).toFixed(1)}%
-                                </span>
-                              </div>
-                            ) : null}
+                            <div className="flex items-center justify-between border-b border-sat-hairline pb-2">
+                              <span className="text-[13px] text-sat-nav">Confidence Score</span>
+                              <span className="text-[13px] font-medium text-sat-green">
+                                {(presentConfidence(msg.result.confidence) * 100).toFixed(1)}%
+                              </span>
+                            </div>
                           </div>
                           {msg.result.observations?.length ? (
                             <div className="mt-5 text-[13px] leading-relaxed text-sat-subtitle">
@@ -227,7 +232,7 @@ export function SatelliteQAPanel({ isMobile, isFullWidth }: { isMobile?: boolean
           <button
             type="button"
             title="Attach images"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => s.openKindDialog()}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sat-nav hover:bg-sat-hairline"
           >
             <Paperclip size={18} />
@@ -250,6 +255,7 @@ export function SatelliteQAPanel({ isMobile, isFullWidth }: { isMobile?: boolean
           </button>
         </form>
       </div>
+      <BandKindDialog onChosen={() => fileInputRef.current?.click()} />
     </aside>
   );
 }

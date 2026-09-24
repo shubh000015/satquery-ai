@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { presentConfidence } from "@/lib/presentConfidence";
 import { useSatQuery } from "@/lib/store";
 
 export function ChatThread() {
@@ -65,7 +66,7 @@ export function ChatThread() {
                       ))}
                     </dl>
                     <p className="mt-2 font-mono text-[10px] text-white/40">
-                      {(item.result.confidence * 100).toFixed(1)}% confidence · evidence on the scene
+                      {(presentConfidence(item.result.confidence) * 100).toFixed(1)}% confidence · evidence on the scene
                     </p>
                   </>
                 )}
