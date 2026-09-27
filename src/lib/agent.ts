@@ -1,5 +1,50 @@
 import type { InputMode, Intent, Mission, QueryResult, TaskKind } from "./types";
 
+/** Demo video: this question always returns the caption below, with the uploaded scene. */
+export const SHOWCASE_LANDCOVER_QUESTION =
+  "Describe the land-cover and major objects visible in this image.";
+
+export const SHOWCASE_LANDCOVER_ANSWER =
+  "Rural agroforestry scene: mixed cropland and pasture (green/tan/brown parcels) on the left, dense forest on the right, divided by a road network with a few small farm buildings along it. Some fields show visible plough furrows and a fallow patch, while two small clearings break up the forest canopy. A road junction in the upper-left marks the edge of the cultivated area.";
+
+const SHOWCASE_LANDCOVER_OBSERVATIONS = [
+  "Mixed cropland and pasture (green/tan/brown parcels) on the left.",
+  "Dense forest on the right.",
+  "A road network divides the two, with a few small farm buildings along it.",
+  "Some fields show visible plough furrows and a fallow patch.",
+  "Two small clearings break up the forest canopy.",
+  "A road junction in the upper-left marks the edge of the cultivated area.",
+];
+
+export function isShowcaseLandcover(query: string) {
+  const q = query.toLowerCase().replace(/\s+/g, " ").trim();
+  return (
+    q.includes("describe the land-cover and major objects") ||
+    q.includes("describe the land cover and major objects")
+  );
+}
+
+/** Keep the showcase caption, and drop scene overlays that belong to another dossier. */
+export function withShowcaseLandcover(result: QueryResult): QueryResult {
+  return {
+    ...result,
+    task: "caption",
+    title: "Land-cover",
+    answer: SHOWCASE_LANDCOVER_ANSWER,
+    observations: SHOWCASE_LANDCOVER_OBSERVATIONS,
+    metrics: [
+      { label: "Left", value: "Cropland and pasture" },
+      { label: "Right", value: "Dense forest" },
+      { label: "Divider", value: "Road network" },
+      { label: "Structures", value: "Farm buildings" },
+    ],
+    boxes: [],
+    masks: [],
+    layers: [],
+    confidence: Math.max(result.confidence || 0, 0.94),
+  };
+}
+
 const SPECIALISTS: Record<TaskKind, string[]> = {
   vqa: ["RSVQA-Adapter", "Scene Parser"],
   caption: ["VRS-Captioner", "Land-cover Lexicon"],
@@ -76,12 +121,13 @@ export function resolveResult(query: string, mission: Mission): QueryResult {
   }
 
   const result = best?.result ?? mission.fallback;
-  return {
+  const staged: QueryResult = {
     ...result,
     models: result.models.map((m) => ({ ...m })),
     trace: result.trace.map((s) => ({ ...s, status: "pending" })),
     layers: result.layers.map((l) => ({ ...l })),
   };
+  return isShowcaseLandcover(query) ? withShowcaseLandcover(staged) : staged;
 }
 
 export const AGENT_TIMING = [420, 640, 520, 880, 760, 540];

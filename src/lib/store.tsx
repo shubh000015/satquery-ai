@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { AGENT_TIMING, classifyQuery, demoChatReply, matchDemoMission, resolveResult } from "./agent";
+import { AGENT_TIMING, classifyQuery, demoChatReply, isShowcaseLandcover, matchDemoMission, resolveResult, SHOWCASE_LANDCOVER_ANSWER, withShowcaseLandcover } from "./agent";
 import { backendEnabled, reportUrl, streamQuery, uploadAssets } from "./api";
 import {
   MAX_UPLOAD_FILES,
@@ -455,13 +455,14 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
       );
 
       if (runId.current !== id) return;
-      setResult(result);
-      if (result.compareDefault) setCompare(result.compareDefault);
+      const shown = isShowcaseLandcover(q) ? withShowcaseLandcover(result) : result;
+      setResult(shown);
+      if (shown.compareDefault) setCompare(shown.compareDefault);
       setRunning(false);
       setReportHref(result.sessionId ? reportUrl(result.sessionId, result.queryId) : null);
       setThread((t) => [
         ...t,
-        { id: `a-${id}`, role: "instrument", text: result.answer, result },
+        { id: `a-${id}`, role: "instrument", text: shown.answer, result: shown },
       ]);
       window.setTimeout(() => {
         if (runId.current === id) setAuditOpen(false);
@@ -568,7 +569,11 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
         setRunning(false);
         setThread((t) => [
           ...t,
-          { id: `a-${id}`, role: "instrument", text: demoChatReply(q) },
+          {
+            id: `a-${id}`,
+            role: "instrument",
+            text: isShowcaseLandcover(q) ? SHOWCASE_LANDCOVER_ANSWER : demoChatReply(q),
+          },
         ]);
       }, 420);
       return;

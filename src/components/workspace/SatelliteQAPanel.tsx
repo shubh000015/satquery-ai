@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useRef } from "react";
 import { ArrowUp, Activity, FileSearch, Layers, Paperclip, MessageSquare } from "lucide-react";
+import { SHOWCASE_LANDCOVER_QUESTION } from "@/lib/agent";
 import { presentConfidence } from "@/lib/presentConfidence";
 import type { Asset } from "@/lib/types";
 import { BandChecklist, BandKindDialog } from "./BandUpload";
@@ -15,10 +16,10 @@ function previewable(asset: Asset) {
 }
 
 const DEMO_QUERIES = [
+  SHOWCASE_LANDCOVER_QUESTION,
   "Which settlements are affected by water-covered areas?",
   "Has built-up area increased between the two dates?",
   "Highlight the ships and bulk tanks in this harbour.",
-  "Describe the land-cover and major objects visible in this image.",
 ];
 
 export function SatelliteQAPanel({ isMobile, isFullWidth }: { isMobile?: boolean; isFullWidth?: boolean }) {
@@ -106,7 +107,7 @@ export function SatelliteQAPanel({ isMobile, isFullWidth }: { isMobile?: boolean
                   <button
                     key={q}
                     type="button"
-                    onClick={() => s.setQuery(q)}
+                    onClick={() => (q === SHOWCASE_LANDCOVER_QUESTION ? send(q) : s.setQuery(q))}
                     className="rounded-lg border border-sat-hairline bg-sat-box px-3 py-2.5 text-left text-[13px] leading-relaxed text-sat-msg-text transition-colors hover:bg-sat-hairline"
                   >
                     {q}
@@ -228,7 +229,7 @@ export function SatelliteQAPanel({ isMobile, isFullWidth }: { isMobile?: boolean
                         key={q}
                         type="button"
                         disabled={s.running}
-                        onClick={() => s.setQuery(q)}
+                        onClick={() => (q === SHOWCASE_LANDCOVER_QUESTION ? send(q) : s.setQuery(q))}
                         className="flex w-full items-center justify-between rounded-lg bg-[#1c1c1c] px-3 py-2 text-left transition-colors hover:bg-sat-hairline disabled:opacity-40"
                       >
                         <span className="text-[13px] text-sat-msg-text">{q}</span>
