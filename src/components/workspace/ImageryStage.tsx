@@ -56,7 +56,7 @@ export function ImageryStage() {
       : null;
 
   return (
-    <div className="relative flex h-full w-full flex-col">
+    <div className="relative flex h-full min-h-0 w-full flex-1 flex-col">
       <div
         ref={stageRef}
         className={`relative min-h-0 flex-1 overflow-hidden bg-black ${s.measuring ? "cursor-crosshair" : "cursor-default"}`}
@@ -235,7 +235,7 @@ function Plate({ asset, label, running, hasResult }: { asset: Asset; label?: str
       <img
         src={asset.src}
         alt={asset.name}
-        className={`h-full w-full object-cover ${sar ? "contrast-125 saturate-50" : ""} ${running ? "brightness-75" : ""}`}
+        className={`h-full w-full object-cover object-center ${sar ? "contrast-125 saturate-50" : ""} ${running ? "brightness-75" : ""}`}
         draggable={false}
       />
       {sar && !hasResult && <div className="speckle absolute inset-0" />}

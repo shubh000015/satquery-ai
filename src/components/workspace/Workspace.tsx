@@ -61,7 +61,7 @@ export function Workspace() {
               </button>
             </div>
             
-            <div className="relative flex-1 overflow-hidden bg-[#0a0c10]">
+            <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-[#0a0c10]">
               <ImageryStage />
             </div>
           </main>

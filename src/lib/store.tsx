@@ -425,6 +425,18 @@ export function SatQueryProvider({ children }: { children: ReactNode }) {
           signature,
         };
         remote.current = session;
+        if (upload.assets.length) {
+          setMission((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              assets: prev.assets.map((asset, index) => {
+                const remoteAsset = upload.assets[index];
+                return remoteAsset?.src ? { ...asset, src: remoteAsset.src } : asset;
+              }),
+            };
+          });
+        }
         const blocking = upload.validation.issues.filter((i) => i.severity === "error");
         if (blocking.length) flashError(blocking[0].message);
       }
