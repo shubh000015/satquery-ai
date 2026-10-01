@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { BandKindDialog } from "@/components/workspace/BandUpload";
 import { useSatQuery } from "@/lib/store";
 import { Hero } from "./Hero";
 import { Brief } from "./Brief";
@@ -9,7 +10,8 @@ import { Laboratory } from "./Laboratory";
 import { SiteNav } from "./SiteNav";
 
 export function Landing() {
-  const { ingestFiles, pairChoice, confirmPair, cancelPair, setScreen, submit } = useSatQuery();
+  const { ingestFiles, pairChoice, confirmPair, cancelPair, setScreen, submit, openKindDialog } =
+    useSatQuery();
   const inputRef = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
 
@@ -41,7 +43,7 @@ export function Landing() {
       <SiteNav />
       <Hero
         onAsk={handleAsk}
-        onUpload={upload}
+        onUpload={openKindDialog}
       />
       <Laboratory />
       <Brief />
@@ -93,6 +95,7 @@ export function Landing() {
           </div>
         </div>
       )}
+      <BandKindDialog onChosen={upload} />
     </div>
   );
 }

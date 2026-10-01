@@ -36,3 +36,8 @@ class InputValidationError(AgentError):
 class UnsupportedFormatError(AgentError):
     code = "unsupported-format"
     status_code = 415
+
+
+class UploadRejectedError(AgentError):
+    code = "upload-rejected"
+    status_code = 422

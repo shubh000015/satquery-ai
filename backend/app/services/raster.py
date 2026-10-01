@@ -50,6 +50,7 @@ class Scene:
     array: np.ndarray  # (H, W, C) float32 in 0..1, percentile-stretched
     reflectance: np.ndarray  # (H, W, C) float32 in 0..1, dtype-scaled only
     meta: RasterMeta
+    band_names: tuple[str, ...] | None = None
 
     @property
     def height(self) -> int:
@@ -165,8 +166,18 @@ def _probe_with_pillow(path: Path) -> RasterMeta:
     )
 
 
+def _probe_npz(path: Path) -> RasterMeta:
+    with np.load(path) as loaded:
+        array = loaded["array"]
+    height, width = int(array.shape[0]), int(array.shape[1])
+    bands = int(array.shape[2]) if array.ndim == 3 else 1
+    return RasterMeta(width=width, height=height, bands=bands, dtype="float32", driver="NPZ")
+
+
 def probe(path: Path) -> RasterMeta:
     """Read dimensions, band count and georeferencing without loading all pixels."""
+    if path.suffix.lower() == ".npz":
+        return _probe_npz(path)
     if RASTERIO_AVAILABLE:
         try:  # pragma: no cover - exercised only with rasterio installed
             with rasterio.open(path) as ds:
@@ -231,8 +242,75 @@ def _target_shape(width: int, height: int, max_edge: int) -> tuple[int, int]:
     return max(1, int(round(height * factor))), max(1, int(round(width * factor)))
 
 
+def load_npz_scene(path: Path, max_edge: int = 512) -> Scene:
+    """Read a stacked band cube written by AssetStore.save_uploads."""
+    with np.load(path) as loaded:
+        reflectance = np.asarray(loaded["array"], dtype=np.float32)
+        stretched = (
+            np.asarray(loaded["stretched"], dtype=np.float32)
+            if "stretched" in loaded.files
+            else np.stack([_stretch(reflectance[:, :, i]) for i in range(reflectance.shape[2])], axis=2)
+        )
+        names = tuple(str(n) for n in loaded["names"].tolist()) if "names" in loaded.files else None
+    if max(stretched.shape[0], stretched.shape[1]) > max_edge:
+        out_h, out_w = _target_shape(stretched.shape[1], stretched.shape[0], max_edge)
+
+        def _resize(plane: np.ndarray) -> np.ndarray:
+            img = Image.fromarray((np.clip(plane, 0, 1) * 255).astype(np.uint8), mode="L")
+            return np.asarray(img.resize((out_w, out_h), Image.BILINEAR), dtype=np.float32) / 255.0
+
+        stretched = np.stack([_resize(stretched[:, :, i]) for i in range(stretched.shape[2])], axis=2)
+        reflectance = np.stack([_resize(reflectance[:, :, i]) for i in range(reflectance.shape[2])], axis=2)
+    meta = RasterMeta(
+        width=int(stretched.shape[1]),
+        height=int(stretched.shape[0]),
+        bands=int(stretched.shape[2]),
+        dtype="float32",
+        driver="NPZ",
+    )
+    return Scene(path=path, array=stretched, reflectance=reflectance, meta=meta, band_names=names)
+
+
+def stack_scenes(members: list[tuple[str, "Scene"]], names: list[str], dest: Path) -> Scene:
+    """Stack 1-band (or first-band) planes into one cube and write an .npz."""
+    if not members:
+        raise ValueError("no planes to stack")
+    first = members[0][1]
+    height, width = first.height, first.width
+    planes_s: list[np.ndarray] = []
+    planes_r: list[np.ndarray] = []
+    for _filename, scene in members:
+        stretched = scene.array[:, :, 0]
+        reflectance = scene.reflectance[:, :, 0]
+        if stretched.shape != (height, width):
+            def _resize(plane: np.ndarray) -> np.ndarray:
+                img = Image.fromarray((np.clip(plane, 0, 1) * 255).astype(np.uint8), mode="L")
+                return np.asarray(img.resize((width, height), Image.BILINEAR), dtype=np.float32) / 255.0
+
+            stretched = _resize(stretched)
+            reflectance = _resize(reflectance)
+        planes_s.append(stretched)
+        planes_r.append(reflectance)
+    array = np.stack(planes_s, axis=2)
+    reflectance = np.stack(planes_r, axis=2)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(
+        dest,
+        array=reflectance.astype(np.float32),
+        stretched=array.astype(np.float32),
+        names=np.array(names),
+    )
+    meta = first.meta.model_copy(update={"bands": len(names), "width": width, "height": height})
+    return Scene(path=dest, array=array, reflectance=reflectance, meta=meta, band_names=tuple(names))
+
+
 def load_scene(path: Path, max_edge: int = 512) -> Scene:
     """Load a decimated, normalised copy of the raster for analysis."""
+    if path.suffix.lower() == ".npz":
+        return load_npz_scene(path, max_edge=max_edge)
+
+    from app.services.bands_ingest import infer_cube_names, parse_band_token
+
     meta = probe(path)
     out_h, out_w = _target_shape(meta.width, meta.height, max_edge)
 
@@ -240,7 +318,7 @@ def load_scene(path: Path, max_edge: int = 512) -> Scene:
     if RASTERIO_AVAILABLE:
         try:  # pragma: no cover - exercised only with rasterio installed
             with rasterio.open(path) as ds:
-                count = min(ds.count, 8)
+                count = min(ds.count, 14)
                 data = ds.read(
                     indexes=list(range(1, count + 1)),
                     out_shape=(count, out_h, out_w),
@@ -268,14 +346,29 @@ def load_scene(path: Path, max_edge: int = 512) -> Scene:
 
     stretched = np.stack([_stretch(array[:, :, i]) for i in range(array.shape[2])], axis=2)
     reflectance = _to_reflectance(array, meta.dtype)
-    return Scene(path=path, array=stretched, reflectance=reflectance, meta=meta)
+    token = parse_band_token(path.name)
+    names = (token,) if token and stretched.shape[2] == 1 else infer_cube_names(path.name, stretched.shape[2])
+    return Scene(
+        path=path,
+        array=stretched,
+        reflectance=reflectance,
+        meta=meta,
+        band_names=names or None,
+    )
 
 
 def write_preview(path: Path, dest: Path, max_edge: int = 1024) -> Path:
     """Browsers cannot display GeoTIFF, so keep an 8-bit PNG next to the upload."""
     scene = load_scene(path, max_edge=max_edge)
     data = scene.array
-    if data.shape[2] == 1:
+    names = scene.band_names or ()
+    if names and {"B04", "B03", "B02"}.issubset(names):
+        rgb = np.stack([data[:, :, names.index(b)] for b in ("B04", "B03", "B02")], axis=2)
+    elif names and {"VV", "VH"}.issubset(names):
+        vv = data[:, :, names.index("VV")]
+        vh = data[:, :, names.index("VH")]
+        rgb = np.stack([vv, vh, np.abs(vv - vh)], axis=2)
+    elif data.shape[2] == 1:
         rgb = np.repeat(data, 3, axis=2)
     elif data.shape[2] == 2:
         rgb = np.concatenate([data, data[:, :, :1]], axis=2)

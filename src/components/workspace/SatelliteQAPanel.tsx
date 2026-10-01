@@ -1,8 +1,17 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { Fragment, useEffect, useRef } from "react";
 import { ArrowUp, Activity, FileSearch, Layers, Paperclip, MessageSquare } from "lucide-react";
+import type { Asset } from "@/lib/types";
+import { BandChecklist, BandKindDialog } from "./BandUpload";
 import { useSatQuery } from "@/lib/store";
+
+function previewable(asset: Asset) {
+  if (!asset.src) return false;
+  if (!asset.src.startsWith("blob:")) return true;
+  const files = asset.sourceFiles?.length ? asset.sourceFiles : [asset.name];
+  return files.some((name) => /\.(png|jpe?g|webp|gif)$/i.test(name));
+}
 
 const DEMO_QUERIES = [
   "Which settlements are affected by water-covered areas?",
@@ -26,6 +35,23 @@ export function SatelliteQAPanel({ isMobile, isFullWidth }: { isMobile?: boolean
     s.submit(q);
   };
 
+  const uploads = (s.mission?.id === "upload" ? s.mission.assets : []).filter(previewable);
+  const firstUser = s.thread.findIndex((msg) => msg.role === "user");
+  const uploadFigures = uploads.length ? (
+    <div className="flex justify-center">
+      <div className={`grid w-full gap-3 ${uploads.length > 1 ? "max-w-xl grid-cols-2" : "max-w-lg grid-cols-1"}`}>
+        {uploads.map((asset) => (
+          <figure key={asset.id} className="overflow-hidden rounded-xl border border-sat-hairline bg-black">
+            <img src={asset.src} alt={asset.name} className="mx-auto max-h-[420px] w-full object-contain object-center" />
+            <figcaption className="truncate px-3 py-2 text-center text-[11px] text-sat-subtitle">
+              {asset.sourceFiles?.join(", ") || asset.name}
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+    </div>
+  ) : null;
+
   return (
     <aside
       className={`flex h-full w-full flex-col bg-sat-panel-bg ${
@@ -46,7 +72,10 @@ export function SatelliteQAPanel({ isMobile, isFullWidth }: { isMobile?: boolean
             </h3>
             <ul className="space-y-1.5 text-[12px] text-sat-subtitle">
               <li>
-                <strong>GeoTIFF</strong> / <strong>TIFF</strong> — supported
+                <strong>Optical</strong> — all 12 Sentinel-2 band GeoTIFFs (B01–B08, B8A, B09, B11, B12)
+              </li>
+              <li>
+                <strong>SAR</strong> — VV and VH as two GeoTIFFs
               </li>
               <li>
                 <strong>PNG</strong> / <strong>JPEG</strong> — prescribed public benchmark datasets only
@@ -54,13 +83,17 @@ export function SatelliteQAPanel({ isMobile, isFullWidth }: { isMobile?: boolean
             </ul>
           </div>
 
+          <BandChecklist onAdd={() => fileInputRef.current?.click()} />
+
+          {firstUser < 0 ? uploadFigures : null}
+
           {!s.thread.length && !s.result && !s.running ? (
             <div className="flex flex-col text-sat-nav">
               <div className="mt-4 flex flex-col items-center text-center">
                 <MessageSquare size={32} className="mb-3 opacity-20" />
                 <p className="text-[13px] text-sat-heading">Ask in plain English.</p>
                 <p className="mt-1 text-[12px] opacity-70">
-                  Upload a scene first. The backend will route your question to the specialist models.
+                  Attach a full optical (12-band) or SAR (VV+VH) stack, then ask in English.
                 </p>
               </div>
               <div className="mt-6 flex flex-col gap-2">
@@ -78,8 +111,9 @@ export function SatelliteQAPanel({ isMobile, isFullWidth }: { isMobile?: boolean
             </div>
           ) : (
             <>
-              {s.thread.map((msg) => (
-                <div key={msg.id} className="rounded-xl border border-sat-hairline bg-sat-box p-5 shadow-sm">
+              {s.thread.map((msg, index) => (
+                <Fragment key={msg.id}>
+                <div className="rounded-xl border border-sat-hairline bg-sat-box p-5 shadow-sm">
                   {msg.role === "user" ? (
                     <>
                       <h3 className="mb-4 flex items-center gap-2 text-[14px] font-semibold text-sat-heading">
@@ -130,6 +164,8 @@ export function SatelliteQAPanel({ isMobile, isFullWidth }: { isMobile?: boolean
                     </>
                   )}
                 </div>
+                {index === firstUser ? uploadFigures : null}
+                </Fragment>
               ))}
 
               {s.running && (
@@ -227,7 +263,7 @@ export function SatelliteQAPanel({ isMobile, isFullWidth }: { isMobile?: boolean
           <button
             type="button"
             title="Attach images"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => s.openKindDialog()}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sat-nav hover:bg-sat-hairline"
           >
             <Paperclip size={18} />
@@ -250,6 +286,7 @@ export function SatelliteQAPanel({ isMobile, isFullWidth }: { isMobile?: boolean
           </button>
         </form>
       </div>
+      <BandKindDialog onChosen={() => fileInputRef.current?.click()} />
     </aside>
   );
 }

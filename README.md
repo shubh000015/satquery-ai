@@ -7,9 +7,11 @@ Interactive vision-language assistant for multimodal remote sensing image analys
 Non-experts ask a satellite scene a question in English. An agentic controller classifies the query, picks specialist tools, and returns an evidence-grounded reply (text + overlays on the image).
 
 **Defined inputs**
-- Single optical / MSI / SAR — captioning, VQA, text-guided grounding
+- Single optical / MSI / SAR — captioning, VQA, text-guided grounding. Sentinel-2 MSI can be uploaded as 12 named GeoTIFF band files (B01–B08, B8A, B09, B11, B12); SAR can be uploaded as VV + VH.
 - Co-registered optical + SAR — fusion (e.g. flood through cloud)
-- Bi-temporal pair — change description / change VQA
+- Bi-temporal pair — change description / change VQA. Each date may contain a 12-band optical stack.
+
+Band files with matching scene/date names are grouped into one scene. The upload accepts up to 24 files and produces at most two scenes.
 
 **Demo scenes (scripted mock agent — always local)**
 | Scene | Proves |

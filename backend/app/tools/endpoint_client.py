@@ -70,8 +70,10 @@ def scene_png_b64(scene: Scene, max_edge: int = _MAX_EDGE) -> str:
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
-def band_names_for(modality: str, band_count: int) -> tuple[str, ...]:
+def band_names_for(modality: str, band_count: int, named: tuple[str, ...] | None = None) -> tuple[str, ...]:
     """Sensor band names for what we actually have. Never more than we have."""
+    if named:
+        return named[:band_count]
     if modality == "sar":
         return _SAR_NAMES[: max(1, min(band_count, 2))]
     return _OPTICAL_NAMES[: max(1, min(band_count, 4))]
@@ -84,7 +86,7 @@ def scene_bands(scene: Scene, modality: str, max_edge: int = _BAND_EDGE) -> dict
     stretch destroys the ratios between bands, which is exactly the signal a
     multispectral classifier reads.
     """
-    names = band_names_for(modality, scene.bands)
+    names = band_names_for(modality, scene.bands, scene.band_names)
     data = scene.reflectance[:, :, : len(names)].astype(np.float32)
 
     if max(scene.height, scene.width) > max_edge:

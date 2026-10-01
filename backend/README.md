@@ -71,9 +71,13 @@ PNG/JPEG uploads are flagged. Declare the dataset (`benchmark_dataset=RSVQA`) an
 the flag becomes an informational note; set `SATQUERY_STRICT_FORMAT_POLICY=true`
 to reject them outright instead of warning.
 
-Cardinality is a single scene or a pair. Pair mode is inferred from the sensor
-families — optical/MSI + SAR is cross-modal, same-family is bi-temporal — and
-the client can override with an explicit `mode`.
+Cardinality is a single scene or a pair. Optical Sentinel-2 band planes (B01–B08,
+B8A, B09, B11, B12) and SAR VV/VH planes are grouped and stacked into scenes;
+matching scene/date filename prefixes keep distinct acquisitions separate. The
+upload accepts up to 24 files and the validator still limits each query to two
+scenes. Pair mode is inferred from the sensor families — optical/MSI + SAR is
+cross-modal, same-family is bi-temporal — and the client can override with an
+explicit `mode`.
 
 ## What the validator checks
 
@@ -92,7 +96,7 @@ two scenes reporting the same acquisition date.
 | --- | --- | --- |
 | GET | `/api/health` | Status, whether rasterio is present, how many model rows are wired |
 | GET | `/api/registry` | The model plan and specialist tools, with per-row status |
-| POST | `/api/assets` | Upload 1–2 scenes (multipart), returns derived assets + validation + suggested queries |
+| POST | `/api/assets` | Upload up to 24 band files (multipart), stack into at most two scenes, return assets + validation + suggested queries |
 | POST | `/api/assets/validate` | Dry-run compatibility check for a set of asset ids |
 | GET | `/api/assets/{id}` | Derived asset record |
 | GET | `/api/assets/{id}/preview` | 8-bit PNG rendering (browsers cannot display GeoTIFF) |

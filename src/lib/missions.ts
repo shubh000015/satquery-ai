@@ -445,13 +445,26 @@ export function missionById(id: string) {
   return missions.find((m) => m.id === id);
 }
 
-export function customMission(files: { name: string; src: string }[]): Mission {
+export function customMission(
+  files: Array<{
+    name: string;
+    src: string;
+    modality?: "optical" | "sar" | "multispectral";
+    bandNames?: string[];
+    sourceFiles?: string[];
+    missingBands?: string[];
+  }>
+): Mission {
   const pair = files.length >= 2;
-  const mode: Mission["mode"] = pair ? "cross-modal" : "single";
+  const mode: Mission["mode"] = pair
+    ? files.some((f) => f.modality === "sar") && files.some((f) => f.modality !== "sar")
+      ? "cross-modal"
+      : "bi-temporal"
+    : "single";
   const assets = files.slice(0, 2).map((f, i) => ({
     id: `up-${i}`,
     role: (i === 0 ? "primary" : "secondary") as "primary" | "secondary",
-    modality: (i === 1 && pair ? "sar" : "optical") as "optical" | "sar",
+    modality: (f.modality ?? (i === 1 && pair ? "sar" : "optical")) as "optical" | "sar" | "multispectral",
     name: f.name,
     src: f.src,
     sensor: "User scene",
@@ -459,12 +472,15 @@ export function customMission(files: { name: string; src: string }[]): Mission {
     gsd: "native",
     location: "Local file",
     coords: "from metadata",
-    format: f.name.split(".").pop()?.toUpperCase() || "FILE",
+    format: f.sourceFiles?.length ? "Band stack" : f.name.split(".").pop()?.toUpperCase() || "FILE",
     crs: "from GeoTIFF tags",
+    bandNames: f.bandNames,
+    sourceFiles: f.sourceFiles,
+    missingBands: f.missingBands,
   }));
 
   const fallback: QueryResult = {
-    task: pair ? "cross-modal" : "vqa",
+    task: mode === "bi-temporal" ? "change" : pair ? "cross-modal" : "vqa",
     title: "Scene interrogation",
     answer:
       "Inputs are accepted and routed. This prototype UI is running the agentic controller against a local specialist registry. Connect the fine-tuned RSVQA / grounding / CDVQA weights to replace this brief with model output — the canvas, evidence, and audit trail stay the same.",

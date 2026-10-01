@@ -54,6 +54,8 @@ class Asset(CamelModel):
     benchmark_dataset: str | None = None
     modality_source: str = "inferred"
     meta: RasterMeta | None = None
+    band_names: list[str] = Field(default_factory=list)
+    source_files: list[str] = Field(default_factory=list)
 
 
 class ValidationIssue(CamelModel):

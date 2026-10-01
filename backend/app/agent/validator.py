@@ -13,6 +13,7 @@ from app.schemas.imagery import (
     ValidationIssue,
     ValidationReport,
 )
+from app.services.bands_ingest import S2_BANDS, SAR_BANDS, parse_band_token
 
 _DIMENSION_TOLERANCE = 0.02  # 2% edge mismatch is tolerable for co-registration
 _ASPECT_TOLERANCE = 0.05
@@ -95,6 +96,70 @@ def _check_formats(assets: list[Asset], settings: Settings) -> list[ValidationIs
                     severity="warning",
                     message=f"{asset.name} carries no geotransform, so areas cannot be reported in km².",
                     hint="GeoTIFF with CRS and pixel scale enables ground-area metrics.",
+                    asset_id=asset.id,
+                )
+            )
+    return issues
+
+
+def _check_band_completeness(assets: list[Asset]) -> list[ValidationIssue]:
+    """Ask for the full 12-band optical stack or the 2-band SAR pair."""
+    issues: list[ValidationIssue] = []
+    for asset in assets:
+        names = tuple(asset.band_names or [])
+        bands = asset.meta.bands if asset.meta else len(names)
+
+        if asset.modality == "sar":
+            missing = [name for name in SAR_BANDS if name not in names]
+            if names and missing:
+                issues.append(
+                    ValidationIssue(
+                        code="incomplete-sar-bands",
+                        severity="warning",
+                        message=f"{asset.name} is missing SAR band(s) {', '.join(missing)}.",
+                        hint="Upload both VV and VH GeoTIFFs. SAR is stored as those two polarisations.",
+                        asset_id=asset.id,
+                    )
+                )
+            elif bands == 1 and not names:
+                issues.append(
+                    ValidationIssue(
+                        code="incomplete-sar-bands",
+                        severity="warning",
+                        message=f"{asset.name} is a single-band SAR amplitude scene.",
+                        hint="Add VV and VH GeoTIFFs for a full dual-pol stack.",
+                        asset_id=asset.id,
+                    )
+                )
+            continue
+
+        sources = asset.source_files or [asset.name]
+        named_planes = [name for name in sources if parse_band_token(name)]
+        optical_names = [name for name in names if name in S2_BANDS]
+        if named_planes:
+            missing = [name for name in S2_BANDS if name not in names]
+            if missing:
+                issues.append(
+                    ValidationIssue(
+                        code="incomplete-optical-bands",
+                        severity="warning",
+                        message=(
+                            f"{asset.name} has {len(optical_names)}/12 Sentinel-2 bands. "
+                            f"Missing {', '.join(missing)}."
+                        ),
+                        hint="Optical MSI is stored as 12 GeoTIFFs: B01–B08, B8A, B09, B11, B12 (no B10).",
+                        asset_id=asset.id,
+                    )
+                )
+        elif bands and bands <= 4:
+            issues.append(
+                ValidationIssue(
+                    code="incomplete-optical-rgb",
+                    severity="warning",
+                    message=(
+                        f"{asset.name} is a {bands}-band RGB/MSI preview, not the full 12-band optical stack."
+                    ),
+                    hint="Upload all 12 Sentinel-2 band GeoTIFFs (or a 12-band cube) for specialist accuracy.",
                     asset_id=asset.id,
                 )
             )
@@ -269,6 +334,7 @@ def validate(
         )
 
     issues.extend(_check_formats(assets, settings))
+    issues.extend(_check_band_completeness(assets))
 
     if len(assets) == 2:
         pair_issues, co_registered, overlap = _check_pair(assets, mode)
